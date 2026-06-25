@@ -79,7 +79,7 @@ function extractIdentifierBelow(lineText: string): string | null {
 
 /**
  * Escaneia o documento para encontrar todas as tags //@ com o mesmo prefixo
- * Conexões manuais: tags //@ seguidas (sem código) são conexões
+ * Conexões: //@->ID:comentário (comentário vai na seta, não no nó)
  */
 function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}> {
     const relatedTags: Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}> = [];
@@ -92,7 +92,7 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Verifica se é conexão manual //@->ID ou //@->ID:descrição
+        // Verifica se é conexão manual //@->ID:comentário
         const connMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
         if (connMatch) {
             const targetId = connMatch[1];
@@ -107,7 +107,9 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
             continue;
         }
         
-        // Verifica se é tag normal //@ID ou //@ID:descrição
+        // Verifica se é tag normal //@ID:comentário
+        // O comentário é usado retroativamente: se esta linha segue outra tag,
+        // o comentário vira label na seta entre o nó anterior e este nó
         const tagMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
         
         if (tagMatch) {
@@ -149,13 +151,14 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
                 if (nextTag.isConnection && nextTag.line === tag.line + (k - tagIndex)) {
                     connections.push({
                         id: nextTag.id,
-                        label: nextTag.description || nextTag.id
+                        label: nextTag.description || ''
                     });
                 } else {
                     break;
                 }
             }
             
+            // Extrai identificador do código (primeira linha não-//@)
             let identifier: string | null = null;
             let j = tag.line + 1;
             
@@ -167,6 +170,7 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
                 identifier = extractIdentifierBelow(lines[j]);
             }
             
+            // Label do nó: sempre do código, nunca da tag
             const label = identifier ? toReadableLabel(identifier) : fullId;
             
             relatedTags.push({
@@ -175,6 +179,29 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
                 label: label,
                 connections: connections
             });
+        }
+    }
+    
+    // Quarto passo: conexões retroativas (//@ID:comentário)
+    // O comentário no padrão 1 vira label na seta do nó anterior para este nó
+    for (let i = 1; i < relatedTags.length; i++) {
+        const currentTag = relatedTags[i];
+        const prevTag = relatedTags[i - 1];
+        
+        // Busca em allTags a entrada original que corresponde a esta tag
+        const originalEntry = allTags.find(
+            t => t.line === currentTag.line && t.id === currentTag.id && !t.isConnection
+        );
+        
+        if (originalEntry && originalEntry.description) {
+            // Verifica se já não existe uma conexão para este destino (evita duplicatas)
+            const exists = prevTag.connections.some(c => c.id === currentTag.id);
+            if (!exists) {
+                prevTag.connections.push({
+                    id: currentTag.id,
+                    label: originalEntry.description
+                });
+            }
         }
     }
     
@@ -271,12 +298,18 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
             mermaid += `    ${parentNodeId} --> ${currentNodeId}\n`;
         }
         
+        // Conexões manuais com comentário na seta (formato: A -->|comentário| B)
         if (item.connections && item.connections.length > 0) {
             for (const conn of item.connections) {
                 if (idToNodeId.has(conn.id)) {
                     const targetNodeId = idToNodeId.get(conn.id)!;
-                    const safeLabel = conn.label.replace(/"/g, '"');
-                    mermaid += `    ${currentNodeId} --> ${targetNodeId}["${safeLabel}"]\n`;
+                    // Se tem comentário, adiciona na seta com |comentário|
+                    if (conn.label && conn.label.trim()) {
+                        const safeLabel = conn.label.replace(/"/g, '"');
+                        mermaid += `    ${currentNodeId} -->|${safeLabel}| ${targetNodeId}\n`;
+                    } else {
+                        mermaid += `    ${currentNodeId} --> ${targetNodeId}\n`;
+                    }
                 }
             }
         }
