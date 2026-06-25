@@ -1,45 +1,45 @@
 import * as vscode from 'vscode';
 
 /**
- * CodeLens que aparece acima de linhas com tags //@
+ * Gerenciador de decorações com ícone de polvo na margem
  */
-class MDDDCodeLensProvider implements vscode.CodeLensProvider {
+class MDDDDecorationManager {
+    private decorationType: vscode.TextEditorDecorationType;
     
-    private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
-    readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
+    constructor(iconPath: string) {
+        this.decorationType = vscode.window.createTextEditorDecorationType({
+            gutterIconPath: vscode.Uri.file(iconPath),
+            gutterIconSize: 'contain',
+            isWholeLine: true
+        });
+    }
     
-    provideCodeLenses(
-        document: vscode.TextDocument,
-        token: vscode.CancellationToken
-    ): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
-        
-        const codeLenses: vscode.CodeLens[] = [];
+    provideDecorations(document: vscode.TextDocument): vscode.DecorationOptions[] {
+        const decorations: vscode.DecorationOptions[] = [];
         const text = document.getText();
         const lines = text.split(/\r?\n/);
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             
-            // Verifica se a linha contém uma tag //@
             if (line.match(/\/\/@([\w.]+)/)) {
                 const range = new vscode.Range(i, 0, i, 0);
-                const codeLens = new vscode.CodeLens(range, {
-                    title: '📊 Ver Diagrama',
-                    command: 'mddd.showDiagram',
-                    arguments: [document.uri, i]
+                decorations.push({
+                    range: range,
+                    hoverMessage: new vscode.MarkdownString(`**📊 MDDD** — Clique para ver diagrama \`${line.match(/\/\/@([\w.]+)/)![1]}\``)
                 });
-                codeLenses.push(codeLens);
             }
         }
         
-        return codeLenses;
+        return decorations;
     }
     
-    resolveCodeLens(
-        codeLens: vscode.CodeLens,
-        token: vscode.CancellationToken
-    ): vscode.CodeLens | Thenable<vscode.CodeLens> {
-        return codeLens;
+    apply(editor: vscode.TextEditor, decorations: vscode.DecorationOptions[]) {
+        editor.setDecorations(this.decorationType, decorations);
+    }
+    
+    dispose() {
+        this.decorationType.dispose();
     }
 }
 
@@ -47,21 +47,11 @@ class MDDDCodeLensProvider implements vscode.CodeLensProvider {
  * Utilitário para transformar nomes camelCase/snake_case em labels legíveis
  */
 function toReadableLabel(name: string): string {
-    // Remove prefixos de underscore
     let cleaned = name.replace(/^_+/, '');
-    
-    // Insere espaço antes de letras maiúsculas (camelCase)
     cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2');
-    
-    // Substitui underscores e hífens por espaços (snake_case/kebab-case)
     cleaned = cleaned.replace(/[_-]+/g, ' ');
-    
-    // Capitaliza primeira letra de cada palavra
     cleaned = cleaned.replace(/\b\w/g, (char) => char.toUpperCase());
-    
-    // Remove espaços extras
     cleaned = cleaned.trim().replace(/\s+/g, ' ');
-    
     return cleaned;
 }
 
@@ -69,19 +59,15 @@ function toReadableLabel(name: string): string {
  * Extrai o identificador da linha imediatamente abaixo do comentário
  */
 function extractIdentifierBelow(lineText: string): string | null {
-    // Remove comentários de linha (//, #, --, etc)
     let code = lineText.replace(/^\s*\/\/.*$/, '').replace(/^\s*#.*$/, '').replace(/^\s*--.*$/, '');
     
-    // Palavras-chave comuns em linguagens de programação
     const keywords = /\b(class|function|const|let|var|interface|type|enum|struct|def|func|public|private|protected|static|async|await|import|export|from|return|if|else|for|while|do|switch|case|break|continue|new|this|super|extends|implements|abstract|final|override)\b/;
     
-    // Remove palavras-chave do início da linha
     let cleaned = code.replace(/^\s*/, '');
     while (keywords.test(cleaned)) {
         cleaned = cleaned.replace(keywords, '').trim();
     }
     
-    // Padrão para capturar identificadores: letras, números, underscore
     const match = cleaned.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[\(\)\[\]\{\}:=,;]?/);
     
     if (match && match[1]) {
@@ -105,11 +91,9 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         
         if (tagMatch) {
             const fullId = tagMatch[1];
-            const tagPrefix = fullId.split(/[0-9]/)[0]; // Extrai prefixo antes dos números
+            const tagPrefix = fullId.split(/[0-9]/)[0];
             
-            // Inclui tanto o grupo (sem número) quanto as entradas/nós (com número)
             if (tagPrefix.toLowerCase() === prefix.toLowerCase()) {
-                // Tenta extrair identificador na linha abaixo
                 let identifier: string | null = null;
                 if (i + 1 < lines.length) {
                     identifier = extractIdentifierBelow(lines[i + 1]);
@@ -126,7 +110,6 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         }
     }
     
-    // Ordena por ID hierárquico
     relatedTags.sort((a, b) => {
         const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
         const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
@@ -150,14 +133,11 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         return 'graph TD\n    A[Nenhuma tag relacionada encontrada]';
     }
     
-    // Separa grupos (sem número) de entradas/nós (com número)
     const groups = tags.filter(t => !/\d/.test(t.id));
     const numbered = tags.filter(t => /\d/.test(t.id));
     
-    // Ordena grupos alfabeticamente
     const sortedGroups = [...groups].sort((a, b) => a.id.localeCompare(b.id));
     
-    // Ordena numerados por ID hierárquico
     const sortedNumbered = [...numbered].sort((a, b) => {
         const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
         const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
@@ -174,12 +154,10 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     const idToNodeId = new Map<string, string>();
     let nodeIndex = 0;
     
-    // Cria subgraphs para cada grupo
     for (const group of sortedGroups) {
         const safeGroupLabel = group.label.replace(/"/g, '"');
         mermaid += `    subgraph ${safeGroupLabel}\n`;
         
-        // Adiciona entradas e nós deste grupo
         const groupItems = sortedNumbered.filter(item => {
             const parentId = findParentId(item.id, sortedGroups);
             return parentId === group.id || item.id.startsWith(group.id);
@@ -195,7 +173,6 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         mermaid += `    end\n`;
     }
     
-    // Cria conexões dentro dos grupos
     for (const item of sortedNumbered) {
         const currentNodeId = idToNodeId.get(item.id)!;
         const parentId = findParentId(item.id, sortedGroups);
@@ -211,106 +188,23 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
 
 /**
  * Encontra o ID do pai de um item numerado
- * Lógica: 
- * - Teste1.1 -> Teste1 (pai é a entrada)
- * - Teste2.1 -> Teste2 (pai é a entrada)
- * - Teste1 -> Teste (pai é o grupo)
- * - Teste2 -> Teste (pai é o grupo)
  */
 function findParentId(id: string, groups: Array<{id: string}>): string | null {
-    // Se o ID tem pontos, remove o último segmento (pai é o ID sem o último .número)
-    // Teste1.1.1 -> Teste1.1
-    // Teste2.1 -> Teste2
-    
     const lastDotIndex = id.lastIndexOf('.');
     if (lastDotIndex > 0) {
         const parentId = id.substring(0, lastDotIndex);
         return parentId;
     }
     
-    // Se não tem ponto, o pai é o grupo (parte sem número)
-    // Teste1 -> Teste
-    // Teste2 -> Teste
     const match = id.match(/^([a-zA-Z_]+)\d+$/);
     if (match) {
         const groupId = match[1];
-        // Verifica se esse grupo existe
         if (groups.some(g => g.id === groupId)) {
             return groupId;
         }
     }
     
     return null;
-}
-
-/**
- * Ativa a extensão
- */
-export function activate(context: vscode.ExtensionContext) {
-    console.log('MDDD Hover Extension está ativa');
-    
-    // Registra o CodeLensProvider
-    const codeLensProvider = vscode.languages.registerCodeLensProvider(
-        { scheme: 'file' },
-        new MDDDCodeLensProvider()
-    );
-    context.subscriptions.push(codeLensProvider);
-    
-    // Registra o comando para mostrar diagrama
-    const showDiagramCommand = vscode.commands.registerCommand(
-        'mddd.showDiagram',
-        (uri: vscode.Uri, lineNumber: number) => {
-            const document = vscode.window.activeTextEditor?.document;
-            if (!document) return;
-            
-            // Extrai o prefixo da tag na linha (apenas para identificar qual tag foi clicada)
-            const lineText = document.lineAt(lineNumber).text;
-            const tagMatch = lineText.match(/\/\/@([\w.]+)/);
-            if (!tagMatch) return;
-            
-            // Busca TODAS as tags do documento (todos os grupos)
-            const allTags = findAllTags(document);
-            const mermaidCode = generateMermaidDiagram(allTags);
-            
-            // Abre webview com o diagrama completo em nova coluna
-            MDDDDiagramPanel.createOrShow(context.extensionUri, mermaidCode);
-        }
-    );
-    context.subscriptions.push(showDiagramCommand);
-}
-
-/**
- * Busca todas as tags do documento
- */
-function findAllTags(document: vscode.TextDocument): Array<{line: number, id: string, label: string}> {
-    const allTags: Array<{line: number, id: string, label: string}> = [];
-    const text = document.getText();
-    const lines = text.split(/\r?\n/);
-    
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const tagMatch = line.match(/\/\/@([\w.]+)/);
-        
-        if (tagMatch) {
-            const fullId = tagMatch[1];
-            
-            // Tenta extrair identificador na linha abaixo
-            let identifier: string | null = null;
-            if (i + 1 < lines.length) {
-                identifier = extractIdentifierBelow(lines[i + 1]);
-            }
-            
-            const label = identifier ? toReadableLabel(identifier) : fullId;
-            
-            allTags.push({
-                line: i,
-                id: fullId,
-                label: label
-            });
-        }
-    }
-    
-    return allTags;
 }
 
 /**
@@ -350,9 +244,7 @@ class MDDDDiagramPanel {
     
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, mermaidCode: string) {
         this._panel = panel;
-        
         this._update(mermaidCode);
-        
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
     
@@ -362,10 +254,8 @@ class MDDDDiagramPanel {
     }
     
     private _getHtmlForWebview(mermaidCode: string): string {
-        // Detecta o tema do VS Code
         const isDarkTheme = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
         
-        // Define cores baseadas no tema
         const colors = isDarkTheme ? {
             primary: '#007acc',
             primaryText: '#fff',
@@ -441,8 +331,93 @@ class MDDDDiagramPanel {
 }
 
 /**
+ * Ativa a extensão
+ */
+export function activate(context: vscode.ExtensionContext) {
+    console.log('MDDD Extension está ativa');
+    
+    // Caminho do ícone
+    const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
+    
+    // Cria gerenciador de decorações
+    const decorationManager = new MDDDDecorationManager(iconPath);
+    context.subscriptions.push(decorationManager);
+    
+    // Atualiza decorações
+    const updateDecorations = (editor: vscode.TextEditor) => {
+        const decorations = decorationManager.provideDecorations(editor.document);
+        decorationManager.apply(editor, decorations);
+    };
+    
+    // Comando para mostrar diagrama
+    const showDiagramCommand = vscode.commands.registerCommand(
+        'mddd.showDiagram',
+        (lineNumber: number) => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) return;
+            
+            const document = editor.document;
+            const lineText = document.lineAt(lineNumber).text;
+            const tagMatch = lineText.match(/\/\/@([\w.]+)/);
+            if (!tagMatch) return;
+            
+            const fullId = tagMatch[1];
+            const prefix = fullId.split(/[0-9]/)[0];
+            
+            const relatedTags = findRelatedTags(document, prefix);
+            const mermaidCode = generateMermaidDiagram(relatedTags);
+            
+            MDDDDiagramPanel.createOrShow(context.extensionUri, mermaidCode);
+        }
+    );
+    context.subscriptions.push(showDiagramCommand);
+    
+    // Detecta clique na linha com tag e abre diagrama automaticamente
+    let lastClickLine = -1;
+    const clickDetection = vscode.window.onDidChangeTextEditorSelection(event => {
+        const editor = event.textEditor;
+        if (!editor) return;
+        
+        const selection = editor.selection;
+        if (!selection.isEmpty) return;
+        
+        const currentLine = selection.active.line;
+        
+        // Evita repetição do mesmo clique
+        if (currentLine === lastClickLine) return;
+        lastClickLine = currentLine;
+        
+        // Atualiza decorações
+        updateDecorations(editor);
+        
+        // Se a linha tem tag, abre o diagrama
+        const lineText = editor.document.lineAt(currentLine).text;
+        if (lineText.match(/\/\/@([\w.]+)/)) {
+            vscode.commands.executeCommand('mddd.showDiagram', currentLine);
+        }
+    });
+    context.subscriptions.push(clickDetection);
+    
+    // Atualiza decorações quando o editor muda
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor) updateDecorations(editor);
+    }));
+    
+    // Atualiza decorações quando o documento muda
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && event.document === editor.document) updateDecorations(editor);
+    }));
+    
+    // Aplica decorações iniciais
+    if (vscode.window.activeTextEditor) {
+        updateDecorations(vscode.window.activeTextEditor);
+    }
+}
+
+/**
  * Desativa a extensão
  */
 export function deactivate() {
-    console.log('MDDD Hover Extension foi desativada');
+    console.log('MDDD Extension foi desativada');
 }
