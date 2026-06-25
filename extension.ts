@@ -107,6 +107,7 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
             const fullId = tagMatch[1];
             const tagPrefix = fullId.split(/[0-9]/)[0]; // Extrai prefixo antes dos números
             
+            // Inclui tanto o grupo (sem número) quanto as entradas/nós (com número)
             if (tagPrefix.toLowerCase() === prefix.toLowerCase()) {
                 // Tenta extrair identificador na linha abaixo
                 let identifier: string | null = null;
@@ -125,25 +126,16 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         }
     }
     
-    // Ordena por ID numérico (ex: Teste1, Teste1.1, Teste1.2, Teste2)
+    // Ordena por ID hierárquico
     relatedTags.sort((a, b) => {
-        const idA = a.id;
-        const idB = b.id;
+        const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
+        const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
         
-        // Extrai números do ID
-        const numsA = idA.match(/\d+/g)?.map(Number) || [0];
-        const numsB = idB.match(/\d+/g)?.map(Number) || [0];
-        
-        // Compara cada nível numérico
         for (let i = 0; i < Math.max(numsA.length, numsB.length); i++) {
             const numA = numsA[i] || 0;
             const numB = numsB[i] || 0;
-            
-            if (numA !== numB) {
-                return numA - numB;
-            }
+            if (numA !== numB) return numA - numB;
         }
-        
         return 0;
     });
     
@@ -158,8 +150,15 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         return 'graph TD\n    A[Nenhuma tag relacionada encontrada]';
     }
     
-    // Ordena por ID para manter ordem hierárquica
-    const sorted = [...tags].sort((a, b) => {
+    // Separa grupos (sem número) de entradas/nós (com número)
+    const groups = tags.filter(t => !/\d/.test(t.id));
+    const numbered = tags.filter(t => /\d/.test(t.id));
+    
+    // Ordena grupos alfabeticamente
+    const sortedGroups = [...groups].sort((a, b) => a.id.localeCompare(b.id));
+    
+    // Ordena numerados por ID hierárquico
+    const sortedNumbered = [...numbered].sort((a, b) => {
         const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
         const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
         
@@ -172,28 +171,34 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     });
     
     let mermaid = 'graph TD\n';
-    
-    // Mapa de ID para nodeId
     const idToNodeId = new Map<string, string>();
+    let nodeIndex = 0;
     
-    // Cria nós
-    for (let i = 0; i < sorted.length; i++) {
-        const current = sorted[i];
-        const nodeId = `N${i}`;
-        const safeLabel = current.label.replace(/"/g, '"');
+    // Cria subgraphs para cada grupo
+    for (const group of sortedGroups) {
+        const safeGroupLabel = group.label.replace(/"/g, '"');
+        mermaid += `    subgraph ${safeGroupLabel}\n`;
         
-        idToNodeId.set(current.id, nodeId);
-        mermaid += `    ${nodeId}["${safeLabel}"]\n`;
+        // Adiciona entradas e nós deste grupo
+        const groupItems = sortedNumbered.filter(item => {
+            const parentId = findParentId(item.id, sortedGroups);
+            return parentId === group.id || item.id.startsWith(group.id);
+        });
+        
+        for (const item of groupItems) {
+            const nodeId = `N${nodeIndex++}`;
+            const safeLabel = item.label.replace(/"/g, '"');
+            idToNodeId.set(item.id, nodeId);
+            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+        }
+        
+        mermaid += `    end\n`;
     }
     
-    // Cria conexões hierárquicas baseadas no ID
-    for (let i = 0; i < sorted.length; i++) {
-        const current = sorted[i];
-        const currentNodeId = idToNodeId.get(current.id)!;
-        
-        // Extrai o pai baseado no ID
-        // Ex: Login1.1 -> Login1, Login2 -> Login, Login -> raiz
-        const parentId = getParentId(current.id);
+    // Cria conexões dentro dos grupos
+    for (const item of sortedNumbered) {
+        const currentNodeId = idToNodeId.get(item.id)!;
+        const parentId = findParentId(item.id, sortedGroups);
         
         if (parentId && idToNodeId.has(parentId)) {
             const parentNodeId = idToNodeId.get(parentId)!;
@@ -205,34 +210,33 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
 }
 
 /**
- * Extrai o ID do pai baseado na estrutura do ID
- * Ex: Login1.1 -> Login1, Login2 -> Login, Login -> null
+ * Encontra o ID do pai de um item numerado
+ * Lógica: 
+ * - Teste1.1 -> Teste1 (pai é a entrada)
+ * - Teste2.1 -> Teste2 (pai é a entrada)
+ * - Teste1 -> Teste (pai é o grupo)
+ * - Teste2 -> Teste (pai é o grupo)
  */
-function getParentId(id: string): string | null {
-    // Remove números do final para encontrar o pai
-    // Login1.1 -> Login1
-    // Login2 -> Login
-    // Login -> null (raiz)
+function findParentId(id: string, groups: Array<{id: string}>): string | null {
+    // Se o ID tem pontos, remove o último segmento (pai é o ID sem o último .número)
+    // Teste1.1.1 -> Teste1.1
+    // Teste2.1 -> Teste2
     
-    const match = id.match(/^(.+?)(\d+(\.\d+)*)$/);
+    const lastDotIndex = id.lastIndexOf('.');
+    if (lastDotIndex > 0) {
+        const parentId = id.substring(0, lastDotIndex);
+        return parentId;
+    }
+    
+    // Se não tem ponto, o pai é o grupo (parte sem número)
+    // Teste1 -> Teste
+    // Teste2 -> Teste
+    const match = id.match(/^([a-zA-Z_]+)\d+$/);
     if (match) {
-        const base = match[1];
-        const numbers = match[2];
-        
-        // Se tem apenas um número (ex: Login1), o pai é a base
-        if (!numbers.includes('.')) {
-            // Verifica se a base não é vazia (ex: "1" -> base "")
-            if (base) {
-                return base;
-            }
-        } else {
-            // Se tem múltiplos números (ex: Login1.1), remove o último nível
-            const lastDotIndex = numbers.lastIndexOf('.');
-            if (lastDotIndex > 0) {
-                return base + numbers.substring(0, lastDotIndex);
-            } else {
-                return base;
-            }
+        const groupId = match[1];
+        // Verifica se esse grupo existe
+        if (groups.some(g => g.id === groupId)) {
+            return groupId;
         }
     }
     
