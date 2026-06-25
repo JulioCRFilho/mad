@@ -127,16 +127,10 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         }
     }
     
-    // Segundo passo: marca conexões (tags seguidas sem código)
-    // Tags com seta (//@->) NÃO são conexões, são nós independentes
-    for (let i = 1; i < allTags.length; i++) {
-        const prev = allTags[i - 1];
-        const current = allTags[i];
-        
-        if (current.line === prev.line + 1 && !current.isArrow) {
-            current.isConnection = true;
-        }
-    }
+    // Segundo passo: conexões implícitas são removidas.
+    // Tags consecutivas NÃO são mais tratadas como conexões.
+    // Apenas //@->ID:desc cria conexões explícitas.
+    // Isso permite que //@Login1 e //@Login2 lado a lado sejam ambos nós.
     
     // Terceiro passo: coleta tags do prefixo
     for (const tag of allTags) {
@@ -156,72 +150,29 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         
         if (tag.isArrow) {
             // //@->TargetId:desc — cria nó fonte com ID numerado sintético + seta para TargetId
-            // Usa o prefixo do target (tag.id) para filtrar, não do código fonte
             const targetPrefix = tag.id.split(/[0-9]/)[0];
             if (targetPrefix.toLowerCase() !== prefix.toLowerCase()) continue;
             
-            const sourceName = identifier || 'Unknown';
+            // Verifica se o alvo existe como nó declarado
+            const targetDeclared = allTags.some(t => t.id === tag.id && !t.isArrow);
             
-            // ID numerado para evitar que vire grupo (grupos não têm dígitos)
-            const syntheticId = `${sourceName}_${tag.line}`;
-            
-            const label = identifier ? toReadableLabel(identifier) : tag.id;
-            const connections: Array<{id: string, label: string}> = [];
-            
-            // Determina o alvo real da conexão:
-            // 1. Se o targetId já existe como nó real (//@ID declarado), usa ele
-            // 2. Se targetId não tem dígitos, é um grupo — usa o grupo 
-            // 3. Senão, usa o grupo do prefixo (o nó "entrada" que contém os filhos)
-            let resolvedTargetId = tag.id;
-            const targetExistsAsNode = relatedTags.some(t => t.id === tag.id) || allTags.some(t => t.id === tag.id && !t.isArrow);
-            const targetIsGroup = !/\d/.test(tag.id);
-            
-            if (!targetExistsAsNode) {
-                if (targetIsGroup) {
-                    // Grupo: usa o nome do grupo diretamente
-                    const groupExists = relatedTags.some(t => t.id === tag.id);
-                    if (!groupExists) {
-                        relatedTags.push({
-                            line: tag.line,
-                            id: tag.id,
-                            label: toReadableLabel(tag.id),
-                            description: null,
-                            connections: []
-                        });
-                    }
-                } else {
-                    // Nó numerado não declarado: usa o grupo (prefixo) como alvo
-                    // Ex: //@->Login1 onde não existe //@Login1, usa o grupo "Login"
-                    const groupId = tag.id.split(/[0-9]/)[0];
-                    const groupExists = relatedTags.some(t => t.id === groupId);
-                    if (groupExists) {
-                        resolvedTargetId = groupId;
-                    } else {
-                        // Cria o grupo e usa ele
-                        relatedTags.push({
-                            line: tag.line,
-                            id: groupId,
-                            label: toReadableLabel(groupId),
-                            description: null,
-                            connections: []
-                        });
-                        resolvedTargetId = groupId;
-                    }
-                }
+            if (!targetDeclared) {
+                vscode.window.showErrorMessage(
+                    `Erro: //@->${tag.id} (linha ${tag.line + 1}) aponta para "${tag.id}" que não foi declarado. Crie //@${tag.id} primeiro.`
+                );
+                return [];
             }
             
-            // Adiciona conexão deste nó para o alvo
-            connections.push({
-                id: resolvedTargetId,
-                label: tag.description || ''
-            });
+            const sourceName = identifier || 'Unknown';
+            const syntheticId = `${sourceName}_${tag.line}`;
+            const label = identifier ? toReadableLabel(identifier) : tag.id;
             
             relatedTags.push({
                 line: tag.line,
                 id: syntheticId,
                 label: label,
                 description: null,
-                connections: connections
+                connections: [{ id: tag.id, label: tag.description || '' }]
             });
             
             continue;
@@ -308,6 +259,8 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     
     const sortedGroups = [...groups].sort((a, b) => a.id.localeCompare(b.id));
     
+    const getGroupPrefix = (id: string) => id.split(/[0-9]/)[0].toLowerCase();
+
     const sortedNumbered = [...numbered].sort((a, b) => {
         const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
         const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
@@ -320,16 +273,6 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         return 0;
     });
     
-    // Mapeia quais grupos são alvo de conexões (precisam de nó de entrada)
-    const targetedGroups = new Set<string>();
-    for (const item of sortedNumbered) {
-        for (const conn of item.connections) {
-            if (groups.some(g => g.id === conn.id)) {
-                targetedGroups.add(conn.id);
-            }
-        }
-    }
-    
     let mermaid = 'graph TD\n';
     const idToNodeId = new Map<string, string>();
     let nodeIndex = 0;
@@ -337,34 +280,29 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     const allocated = new Set<string>();
     
     for (const group of sortedGroups) {
-        const safeGroupLabel = group.label.replace(/"/g, '"');
-        mermaid += `    subgraph ${safeGroupLabel}\n`;
+        const safeLabel = group.label.replace(/"/g, '"');
+        const groupPrefix = getGroupPrefix(group.id);
+        mermaid += `    subgraph ${safeLabel}\n`;
         
-        const groupItems = sortedNumbered.filter(item => {
-            const parentId = findParentId(item.id, sortedGroups);
-            return parentId === group.id || item.id.startsWith(group.id);
-        });
+        // Nó de entrada do grupo
+        const entryNodeId = `N${nodeIndex++}`;
+        idToNodeId.set(group.id, entryNodeId);
+        mermaid += `        ${entryNodeId}["${safeLabel}"]\n`;
         
-        // Nó de entrada para grupos alvo de conexão
-        if (targetedGroups.has(group.id)) {
-            const entryNodeId = `N${nodeIndex++}`;
-            const entryLabel = group.label.replace(/"/g, '"');
-            idToNodeId.set(group.id, entryNodeId);
-            mermaid += `        ${entryNodeId}["${entryLabel}"]\n`;
-        }
-        
+        // Itens cujo prefixo corresponde ao grupo
+        const groupItems = sortedNumbered.filter(item => getGroupPrefix(item.id) === groupPrefix);
         for (const item of groupItems) {
             const nodeId = `N${nodeIndex++}`;
-            const safeLabel = item.label.replace(/"/g, '"');
+            const safeItemLabel = item.label.replace(/"/g, '"');
             idToNodeId.set(item.id, nodeId);
-            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+            mermaid += `        ${nodeId}["${safeItemLabel}"]\n`;
             allocated.add(item.id);
         }
         
         mermaid += `    end\n`;
     }
     
-    // Nós não alocados a subgraph (ex: sintéticos de //@->)
+    // Nós não alocados (sintéticos de //@->)
     for (const item of sortedNumbered) {
         if (!allocated.has(item.id)) {
             const nodeId = `N${nodeIndex++}`;
@@ -374,38 +312,32 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         }
     }
     
+    // Arestas
     for (const item of sortedNumbered) {
-        const currentNodeId = idToNodeId.get(item.id)!;
-        const parentId = findParentId(item.id, sortedGroups);
+        const src = idToNodeId.get(item.id);
+        if (!src) continue;
         
-        if (parentId && idToNodeId.has(parentId)) {
-            const parentNodeId = idToNodeId.get(parentId)!;
-            // Se o item tem description (comentário do padrão //@ID:desc),
-            // usa como label na seta do pai para o filho
+        // Seta pai-filho retroativa (//@ID:desc) — conecta grupo → item
+        const itemPrefix = getGroupPrefix(item.id);
+        const groupEntry = [...sortedGroups].find(g => getGroupPrefix(g.id) === itemPrefix);
+        const parentNode = groupEntry ? idToNodeId.get(groupEntry.id) : undefined;
+        if (parentNode) {
             if (item.description && item.description.trim()) {
-                const safeLabel = item.description.replace(/"/g, '"');
-                mermaid += `    ${parentNodeId} -->|${safeLabel}| ${currentNodeId}\n`;
+                mermaid += `    ${parentNode} -->|${item.description.replace(/"/g, '"')}| ${src}\n`;
             } else {
-                mermaid += `    ${parentNodeId} --> ${currentNodeId}\n`;
+                mermaid += `    ${parentNode} --> ${src}\n`;
             }
         }
         
-        // Conexões manuais com comentário na seta (formato: A -->|comentário| B)
+        // Conexões explícitas (//@->ID:desc)
         if (item.connections && item.connections.length > 0) {
             for (const conn of item.connections) {
-                let targetNodeId = idToNodeId.get(conn.id);
-                // Fallback: se o ID exato não existe, tenta o grupo (prefixo)
-                if (!targetNodeId) {
-                    const parentId = findParentId(conn.id, sortedGroups);
-                    if (parentId) targetNodeId = idToNodeId.get(parentId);
-                }
-                if (targetNodeId) {
-                    // Se tem comentário, adiciona na seta com |comentário|
+                const dst = idToNodeId.get(conn.id);
+                if (dst) {
                     if (conn.label && conn.label.trim()) {
-                        const safeLabel = conn.label.replace(/"/g, '"');
-                        mermaid += `    ${currentNodeId} -->|${safeLabel}| ${targetNodeId}\n`;
+                        mermaid += `    ${src} -->|${conn.label.replace(/"/g, '"')}| ${dst}\n`;
                     } else {
-                        mermaid += `    ${currentNodeId} --> ${targetNodeId}\n`;
+                        mermaid += `    ${src} --> ${dst}\n`;
                     }
                 }
             }
