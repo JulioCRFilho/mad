@@ -72,8 +72,17 @@ function extractIdentifierBelow(lineText: string): string | null {
     // Remove comentários de linha (//, #, --, etc)
     let code = lineText.replace(/^\s*\/\/.*$/, '').replace(/^\s*#.*$/, '').replace(/^\s*--.*$/, '');
     
+    // Palavras-chave comuns em linguagens de programação
+    const keywords = /\b(class|function|const|let|var|interface|type|enum|struct|def|func|public|private|protected|static|async|await|import|export|from|return|if|else|for|while|do|switch|case|break|continue|new|this|super|extends|implements|abstract|final|override)\b/;
+    
+    // Remove palavras-chave do início da linha
+    let cleaned = code.replace(/^\s*/, '');
+    while (keywords.test(cleaned)) {
+        cleaned = cleaned.replace(keywords, '').trim();
+    }
+    
     // Padrão para capturar identificadores: letras, números, underscore
-    const match = code.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[\(\)\[\]\{\}:=,;]?/);
+    const match = cleaned.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[\(\)\[\]\{\}:=,;]?/);
     
     if (match && match[1]) {
         return match[1];
@@ -152,69 +161,6 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     }
     
     return mermaid;
-}
-
-/**
- * Hover Provider para comentários //@ID
- */
-class MDDDHoverProvider implements vscode.HoverProvider {
-    
-    provideHover(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.Hover> {
-        
-        console.log('[MDDD] provideHover called at line:', position.line);
-        
-        const line = document.lineAt(position.line);
-        const lineText = line.text;
-        console.log('[MDDD] lineText:', lineText);
-        
-        // Verifica se a linha contém uma tag //@
-        const tagMatch = lineText.match(/\/\/@([\w.]+)/);
-        console.log('[MDDD] tagMatch:', tagMatch);
-        
-        if (!tagMatch) {
-            console.log('[MDDD] No tag match, returning null');
-            return null;
-        }
-        
-        const fullId = tagMatch[1];
-        const prefix = fullId.split(/[0-9]/)[0];
-        
-        // Encontra todas as tags relacionadas
-        const relatedTags = findRelatedTags(document, prefix);
-        console.log('[MDDD] relatedTags count:', relatedTags.length);
-        
-        if (relatedTags.length === 0) {
-            console.log('[MDDD] No related tags, returning null');
-            return null;
-        }
-        
-        // Gera diagrama Mermaid
-        const mermaidCode = generateMermaidDiagram(relatedTags);
-        
-        // Cria conteúdo do hover
-        const hoverContent = new vscode.MarkdownString();
-        hoverContent.isTrusted = true;
-        hoverContent.appendMarkdown(`**Tag:** \`//@${fullId}\`\n\n`);
-        hoverContent.appendMarkdown(`**Prefixo:** \`${prefix}\`\n\n`);
-        hoverContent.appendMarkdown(`**Tags relacionadas:** ${relatedTags.length}\n\n`);
-        hoverContent.appendMarkdown('---\n\n');
-        hoverContent.appendMarkdown(mermaidCode);
-        
-        // Aplica hover na linha do comentário
-        const hoverRange = new vscode.Range(
-            position.line,
-            0,
-            position.line,
-            lineText.length
-        );
-        
-        console.log('[MDDD] Returning hover with', relatedTags.length, 'tags');
-        return new vscode.Hover(hoverContent, hoverRange);
-    }
 }
 
 /**
