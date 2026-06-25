@@ -81,8 +81,8 @@ function extractIdentifierBelow(lineText: string): string | null {
  * Escaneia o documento para encontrar todas as tags //@ com o mesmo prefixo
  * Conexões: //@->ID:comentário (comentário vai na seta, não no nó)
  */
-function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}> {
-    const relatedTags: Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}> = [];
+function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}> {
+    const relatedTags: Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}> = [];
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     
@@ -177,31 +177,9 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
                 line: tag.line,
                 id: fullId,
                 label: label,
+                description: tag.description,
                 connections: connections
             });
-        }
-    }
-    
-    // Quarto passo: conexões retroativas (//@ID:comentário)
-    // O comentário no padrão 1 vira label na seta do nó anterior para este nó
-    for (let i = 1; i < relatedTags.length; i++) {
-        const currentTag = relatedTags[i];
-        const prevTag = relatedTags[i - 1];
-        
-        // Busca em allTags a entrada original que corresponde a esta tag
-        const originalEntry = allTags.find(
-            t => t.line === currentTag.line && t.id === currentTag.id && !t.isConnection
-        );
-        
-        if (originalEntry && originalEntry.description) {
-            // Verifica se já não existe uma conexão para este destino (evita duplicatas)
-            const exists = prevTag.connections.some(c => c.id === currentTag.id);
-            if (!exists) {
-                prevTag.connections.push({
-                    id: currentTag.id,
-                    label: originalEntry.description
-                });
-            }
         }
     }
     
@@ -244,7 +222,7 @@ function findParentId(id: string, groups: Array<{id: string}>): string | null {
 /**
  * Gera o código Mermaid graph TD baseado nas tags relacionadas
  */
-function generateMermaidDiagram(tags: Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}>): string {
+function generateMermaidDiagram(tags: Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}>): string {
     if (tags.length === 0) {
         return 'graph TD\n    A[Nenhuma tag relacionada encontrada]';
     }
@@ -295,7 +273,14 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         
         if (parentId && idToNodeId.has(parentId)) {
             const parentNodeId = idToNodeId.get(parentId)!;
-            mermaid += `    ${parentNodeId} --> ${currentNodeId}\n`;
+            // Se o item tem description (comentário do padrão //@ID:desc),
+            // usa como label na seta do pai para o filho
+            if (item.description && item.description.trim()) {
+                const safeLabel = item.description.replace(/"/g, '"');
+                mermaid += `    ${parentNodeId} -->|${safeLabel}| ${currentNodeId}\n`;
+            } else {
+                mermaid += `    ${parentNodeId} --> ${currentNodeId}\n`;
+            }
         }
         
         // Conexões manuais com comentário na seta (formato: A -->|comentário| B)
