@@ -1,0 +1,29 @@
+# Dependências
+node_modules/
+
+# Arquivos compilados
+out/
+*.js.map
+
+# VS Code
+.vscode/
+*.vsix
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Testes
+coverage/
+.nyc_output/
+
+# Ambiente
+.env
+.env.local

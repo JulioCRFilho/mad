@@ -1,0 +1,35 @@
+{
+  "name": "mddd-hover-extension",
+  "displayName": "MDDD Hover Extension",
+  "description": "Extensão que exibe diagramas Mermaid ao hover em comentários //@ID",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "plaintext",
+        "aliases": ["Plain Text", "plaintext"],
+        "extensions": [".txt", ".md"]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  }
+}
