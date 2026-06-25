@@ -26,7 +26,7 @@ class MDDDDecorationManager {
                 const range = new vscode.Range(i, 0, i, 0);
                 decorations.push({
                     range: range,
-                    hoverMessage: new vscode.MarkdownString(`**📊 MDDD** — Clique para ver diagrama \`${line.match(/\/\/@([\w.]+)/)![1]}\``)
+                    hoverMessage: 'Open diagram'
                 });
             }
         }
