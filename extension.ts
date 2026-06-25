@@ -78,67 +78,160 @@ function extractIdentifierBelow(lineText: string): string | null {
 }
 
 /**
- * Escaneia o documento para encontrar todas as tags //@ com o mesmo prefixo
- * Conexões: //@->ID:comentário (comentário vai na seta, não no nó)
+ * Filtra todos os nós //@ do documento
  */
-function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}> {
-    const relatedTags: Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}> = [];
+function filterAllNodes(document: vscode.TextDocument): Array<{line: number, id: string, description: string | null, isArrow: boolean}> {
+    const allNodes: Array<{line: number, id: string, description: string | null, isArrow: boolean}> = [];
     const text = document.getText();
     const lines = text.split(/\r?\n/);
-    
-    // Primeiro passo: identifica todas as tags
-    const allTags: Array<{line: number, id: string, description: string | null, isConnection: boolean, isArrow: boolean}> = [];
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Verifica se é tag com seta //@->ID:comentário
-        // Cria um nó independente a partir do código abaixo, com conexão para ID
-        const connMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
-        if (connMatch) {
-            const targetId = connMatch[1];
-            const description = connMatch[2] ? connMatch[2].trim() : null;
-            
-            allTags.push({
+        // Verifica //@->ID:comentário (forward pointer)
+        const arrowMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
+        if (arrowMatch) {
+            allNodes.push({
                 line: i,
-                id: targetId,
-                description: description,
-                isConnection: false,
+                id: arrowMatch[1],
+                description: arrowMatch[2] ? arrowMatch[2].trim() : null,
                 isArrow: true
             });
             continue;
         }
         
-        // Verifica se é tag normal //@ID:comentário (retroativo)
-        // O comentário vira label na seta do nó anterior para este nó
+        // Verifica //@ID:comentário (retro pointer)
         const tagMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
-        
         if (tagMatch) {
-            const fullId = tagMatch[1];
-            const description = tagMatch[2] ? tagMatch[2].trim() : null;
-            
-            allTags.push({
+            allNodes.push({
                 line: i,
-                id: fullId,
-                description: description,
-                isConnection: false,
+                id: tagMatch[1],
+                description: tagMatch[2] ? tagMatch[2].trim() : null,
                 isArrow: false
             });
         }
     }
     
-    // Segundo passo: conexões implícitas são removidas.
-    // Tags consecutivas NÃO são mais tratadas como conexões.
-    // Apenas //@->ID:desc cria conexões explícitas.
-    // Isso permite que //@Login1 e //@Login2 lado a lado sejam ambos nós.
+    return allNodes;
+}
+
+/**
+ * Separa nós em retro pointers //@ e forward pointers //@->
+ */
+function splitNodes(allNodes: Array<{line: number, id: string, description: string | null, isArrow: boolean}>): {
+    retroPointers: Array<{line: number, id: string, description: string | null}>,
+    forwardPointers: Array<{line: number, id: string, description: string | null}>
+} {
+    const retroPointers: Array<{line: number, id: string, description: string | null}> = [];
+    const forwardPointers: Array<{line: number, id: string, description: string | null}> = [];
     
-    // Terceiro passo: coleta tags do prefixo
-    for (const tag of allTags) {
-        if (tag.isConnection) continue;
+    for (const node of allNodes) {
+        if (node.isArrow) {
+            forwardPointers.push({
+                line: node.line,
+                id: node.id,
+                description: node.description
+            });
+        } else {
+            retroPointers.push({
+                line: node.line,
+                id: node.id,
+                description: node.description
+            });
+        }
+    }
+    
+    return { retroPointers, forwardPointers };
+}
+
+/**
+ * Filtra grupos (IDs sem números)
+ */
+function filterGroups(nodes: Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}>): Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}> {
+    return nodes.filter(node => !/\d/.test(node.id));
+}
+
+/**
+ * Filtra nós de entrada (prefix+ número simples)
+ */
+function filterPrefix(nodes: Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}>): Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}> {
+    return nodes.filter(node => /^[a-zA-Z_]+[0-9]+$/.test(node.id));
+}
+
+/**
+ * Filtra nós de sequência (prefix+ número.número...)
+ */
+function filterSequences(nodes: Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}>): Array<{line: number, id: string, label?: string, description?: string | null, connections?: Array<{id: string, label: string}>}> {
+    return nodes.filter(node => /\.[0-9]+/.test(node.id));
+}
+
+/**
+ * Valida se todos os IDs referenciados em //@-> existem como nós declarados
+ */
+function validateDiagram(
+    allNodes: Array<{line: number, id: string, description: string | null, isArrow: boolean}>,
+    prefix: string
+): { valid: boolean; errors: Array<{line: number, missingId: string}> } {
+    const errors: Array<{line: number, missingId: string}> = [];
+    
+    const prefixLower = prefix.toLowerCase();
+    
+    // Coleta todos os IDs declarados (não são arrows) que começam com o prefixo
+    const declaredIds = new Set<string>();
+    for (const node of allNodes) {
+        if (!node.isArrow) {
+            const nodeLower = node.id.toLowerCase();
+            if (nodeLower.startsWith(prefixLower)) {
+                declaredIds.add(node.id);
+            }
+        }
+    }
+    
+    // Verifica se todos os //@-> apontam para IDs existentes
+    for (const node of allNodes) {
+        if (node.isArrow) {
+            const targetLower = node.id.toLowerCase();
+            if (targetLower.startsWith(prefixLower)) {
+                if (!declaredIds.has(node.id)) {
+                    errors.push({
+                        line: node.line,
+                        missingId: node.id
+                    });
+                }
+            }
+        }
+    }
+    
+    return {
+        valid: errors.length === 0,
+        errors: errors
+    };
+}
+
+/**
+ * Escaneia o documento para encontrar todas as tags //@ com o mesmo prefixo
+ * Seguindo o fluxo: FilterNodes → SplitTypes → RetroPointers/ForwardPointers → Filtering → WriteDiagram → Validate
+ */
+function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}> {
+    // Step 1: Filter all //@ nodes
+    const allNodes = filterAllNodes(document);
+    
+    // Step 2: Split types (retro vs forward)
+    const { retroPointers, forwardPointers } = splitNodes(allNodes);
+    
+    // Step 3: Process retro pointers (//@)
+    const processedRetro: Array<{line: number, id: string, label: string, description: string | null}> = [];
+    for (const node of retroPointers) {
+        const nodeLower = node.id.toLowerCase();
+        const prefixLower = prefix.toLowerCase();
+        // Verifica se o ID começa com o prefixo (para capturar Login2, Login2.1, Login2.1.1)
+        if (!nodeLower.startsWith(prefixLower)) continue;
         
-        // Extrai identificador do código (primeira linha não-//@)
+        // Extrai identificador do código abaixo
+        const text = document.getText();
+        const lines = text.split(/\r?\n/);
         let identifier: string | null = null;
-        let j = tag.line + 1;
+        let j = node.line + 1;
         
         while (j < lines.length && lines[j].match(/\/\/@/)) {
             j++;
@@ -148,69 +241,81 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
             identifier = extractIdentifierBelow(lines[j]);
         }
         
-        if (tag.isArrow) {
-            // //@->TargetId:desc — cria nó fonte com ID numerado sintético + seta para TargetId
-            const targetPrefix = tag.id.split(/[0-9]/)[0];
-            if (targetPrefix.toLowerCase() !== prefix.toLowerCase()) continue;
-            
-            // Verifica se o alvo existe como nó declarado
-            const targetDeclared = allTags.some(t => t.id === tag.id && !t.isArrow);
-            
-            if (!targetDeclared) {
-                vscode.window.showErrorMessage(
-                    `Erro: //@->${tag.id} (linha ${tag.line + 1}) aponta para "${tag.id}" que não foi declarado. Crie //@${tag.id} primeiro.`
-                );
-                return [];
-            }
-            
-            const sourceName = identifier || 'Unknown';
-            const syntheticId = `${sourceName}_${tag.line}`;
-            const label = identifier ? toReadableLabel(identifier) : tag.id;
-            
-            relatedTags.push({
-                line: tag.line,
-                id: syntheticId,
-                label: label,
-                description: null,
-                connections: [{ id: tag.id, label: tag.description || '' }]
-            });
-            
-            continue;
-        }
-        
-        const fullId = tag.id;
-        const tagPrefix = fullId.split(/[0-9]/)[0];
-        
-        if (tagPrefix.toLowerCase() === prefix.toLowerCase()) {
-            const connections: Array<{id: string, label: string}> = [];
-            const tagIndex = allTags.indexOf(tag);
-            
-            for (let k = tagIndex + 1; k < allTags.length; k++) {
-                const nextTag = allTags[k];
-                if (nextTag.isConnection && nextTag.line === tag.line + (k - tagIndex)) {
-                    connections.push({
-                        id: nextTag.id,
-                        label: nextTag.description || ''
-                    });
-                } else {
-                    break;
-                }
-            }
-            
-            // Label do nó: sempre do código, nunca da tag
-            const label = identifier ? toReadableLabel(identifier) : fullId;
-            
-            relatedTags.push({
-                line: tag.line,
-                id: fullId,
-                label: label,
-                description: tag.description,
-                connections: connections
-            });
-        }
+        const label = identifier ? toReadableLabel(identifier) : node.id;
+        processedRetro.push({
+            line: node.line,
+            id: node.id,
+            label: label,
+            description: node.description
+        });
     }
     
-    relatedTags.sort((a, b) => {
+    // Step 4: Process forward pointers (//@->)
+    const processedForward: Array<{line: number, id: string, label: string, connections: Array<{id: string, label: string}>}> = [];
+    for (const node of forwardPointers) {
+        const targetLower = node.id.toLowerCase();
+        const prefixLower = prefix.toLowerCase();
+        // Verifica se o ID alvo começa com o prefixo
+        if (!targetLower.startsWith(prefixLower)) continue;
+        
+        // Verifica se o alvo existe
+        const targetDeclared = allNodes.some(n => n.id === node.id && !n.isArrow);
+        if (!targetDeclared) {
+            vscode.window.showErrorMessage(
+                `Erro: //@->${node.id} (linha ${node.line + 1}) aponta para "${node.id}" que não foi declarado. Crie //@${node.id} primeiro.`
+            );
+            return [];
+        }
+        
+        const text = document.getText();
+        const lines = text.split(/\r?\n/);
+        let identifier: string | null = null;
+        let j = node.line + 1;
+        
+        while (j < lines.length && lines[j].match(/\/\/@/)) {
+            j++;
+        }
+        
+        if (j < lines.length) {
+            identifier = extractIdentifierBelow(lines[j]);
+        }
+        
+        const sourceName = identifier || 'Unknown';
+        const syntheticId = `${sourceName}_${node.line}`;
+        const label = identifier ? toReadableLabel(identifier) : node.id;
+        
+        processedForward.push({
+            line: node.line,
+            id: syntheticId,
+            label: label,
+            connections: [{ id: node.id, label: node.description || '' }]
+        });
+    }
+    
+    // Step 5: Filtering - FilterGroups → FilterPrefix → FilterSequences
+    const allProcessed = [...processedRetro.map(n => ({...n, connections: [] as Array<{id: string, label: string}>})), 
+                          ...processedForward];
+    
+    const groups = filterGroups(allProcessed);
+    const prefixNodes = filterPrefix(allProcessed);
+    const sequenceNodes = filterSequences(allProcessed);
+    
+    // Combina todos os nós filtrados e normaliza tipos
+    const filteredNodes = [...groups, ...prefixNodes, ...sequenceNodes].map(node => ({
+        line: node.line,
+        id: node.id,
+        label: node.label || node.id,
+        description: node.description || null,
+        connections: node.connections || []
+    })) as Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}>;
+    
+    // Remove duplicatas mantendo ordem
+    const uniqueNodes = filteredNodes.filter((node, index, self) => 
+        index === self.findIndex(n => n.id === node.id)
+    );
+    
+    // Ordena por ID
+    uniqueNodes.sort((a, b) => {
         const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
         const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
         
@@ -222,7 +327,20 @@ function findRelatedTags(document: vscode.TextDocument, prefix: string): Array<{
         return 0;
     });
     
-    return relatedTags;
+    // Step 6: Validate diagram
+    const validation = validateDiagram(allNodes, prefix);
+    if (!validation.valid) {
+        const errorMessages = validation.errors.map(e => 
+            `ID "${e.missingId}" não encontrado na linha ${e.line + 1}`
+        ).join('\n');
+        
+        vscode.window.showErrorMessage(
+            `Diagrama inválido:\n${errorMessages}`
+        );
+        return [];
+    }
+    
+    return uniqueNodes;
 }
 
 /**
@@ -247,11 +365,12 @@ function findParentId(id: string, groups: Array<{id: string}>): string | null {
 }
 
 /**
- * Gera o código Mermaid graph TD baseado nas tags relacionadas
+ * Gera o código Mermaid flowchart TD estilizado baseado nas tags relacionadas
+ * Usa flowchart TD com cores temáticas do usuário
  */
 function generateMermaidDiagram(tags: Array<{line: number, id: string, label: string, description: string | null, connections: Array<{id: string, label: string}>}>): string {
     if (tags.length === 0) {
-        return 'graph TD\n    A[Nenhuma tag relacionada encontrada]';
+        return 'flowchart TD\n    A[Nenhuma tag relacionada encontrada]';
     }
     
     const groups = tags.filter(t => !/\d/.test(t.id));
@@ -273,7 +392,7 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         return 0;
     });
     
-    let mermaid = 'graph TD\n';
+    let mermaid = 'flowchart TD\n';
     const idToNodeId = new Map<string, string>();
     let nodeIndex = 0;
     
@@ -289,8 +408,24 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         idToNodeId.set(group.id, entryNodeId);
         mermaid += `        ${entryNodeId}["${safeLabel}"]\n`;
         
-        // Itens cujo prefixo corresponde ao grupo
-        const groupItems = sortedNumbered.filter(item => getGroupPrefix(item.id) === groupPrefix);
+        // Itens cujo ID começa com o ID do grupo (case-insensitive)
+        // OU que tem conexão para um ID que está no grupo
+        const groupItems = sortedNumbered.filter(item => {
+            const itemLower = item.id.toLowerCase();
+            const groupLower = group.id.toLowerCase();
+            
+            // Verifica se o ID do item começa com o ID do grupo
+            const startsWithGroup = itemLower === groupLower || itemLower.startsWith(groupLower);
+            
+            // Verifica se o item tem conexão para um ID que está no grupo
+            const hasConnectionToGroup = item.connections && item.connections.some(conn => {
+                const connLower = conn.id.toLowerCase();
+                return connLower === groupLower || connLower.startsWith(groupLower);
+            });
+            
+            return startsWithGroup || hasConnectionToGroup;
+        });
+        
         for (const item of groupItems) {
             const nodeId = `N${nodeIndex++}`;
             const safeItemLabel = item.label.replace(/"/g, '"');
@@ -309,6 +444,24 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
             const safeLabel = item.label.replace(/"/g, '"');
             idToNodeId.set(item.id, nodeId);
             mermaid += `    ${nodeId}["${safeLabel}"]\n`;
+            
+            // Se o nó tem conexões, verifica se o alvo da conexão está em um grupo
+            // e adiciona uma seta implícita para o grupo pai
+            if (item.connections && item.connections.length > 0) {
+                for (const conn of item.connections) {
+                    const connLower = conn.id.toLowerCase();
+                    const groupEntry = [...sortedGroups].find(g => {
+                        const groupLower = g.id.toLowerCase();
+                        return connLower === groupLower || connLower.startsWith(groupLower);
+                    });
+                    if (groupEntry) {
+                        const parentNode = idToNodeId.get(groupEntry.id);
+                        if (parentNode) {
+                            mermaid += `    ${parentNode} --> ${nodeId}\n`;
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -318,8 +471,11 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
         if (!src) continue;
         
         // Seta pai-filho retroativa (//@ID:desc) — conecta grupo → item
-        const itemPrefix = getGroupPrefix(item.id);
-        const groupEntry = [...sortedGroups].find(g => getGroupPrefix(g.id) === itemPrefix);
+        const itemLower = item.id.toLowerCase();
+        const groupEntry = [...sortedGroups].find(g => {
+            const groupLower = g.id.toLowerCase();
+            return itemLower === groupLower || itemLower.startsWith(groupLower);
+        });
         const parentNode = groupEntry ? idToNodeId.get(groupEntry.id) : undefined;
         if (parentNode) {
             if (item.description && item.description.trim()) {
@@ -345,6 +501,44 @@ function generateMermaidDiagram(tags: Array<{line: number, id: string, label: st
     }
     
     return mermaid;
+}
+
+/**
+ * Valida e exibe o diagrama, retornando mensagem de erro se inválido
+ */
+function validateAndDisplayDiagram(
+    document: vscode.TextDocument, 
+    prefix: string,
+    extensionUri: vscode.Uri
+): { success: boolean; errorMessage?: string } {
+    // Filtra todos os nós
+    const allNodes = filterAllNodes(document);
+    
+    // Separa tipos
+    const { retroPointers, forwardPointers } = splitNodes(allNodes);
+    
+    // Valida diagrama
+    const validation = validateDiagram(allNodes, prefix);
+    
+    if (!validation.valid) {
+        const errorMessages = validation.errors.map(e => 
+            `Linha ${e.line + 1}: ID "${e.missingId}" não encontrado`
+        ).join('\n');
+        
+        return {
+            success: false,
+            errorMessage: `Diagrama inválido:\n${errorMessages}`
+        };
+    }
+    
+    // Gera diagrama
+    const relatedTags = findRelatedTags(document, prefix);
+    const mermaidCode = generateMermaidDiagram(relatedTags);
+    
+    // Exibe diagrama
+    MDDDDiagramPanel.createOrShow(extensionUri, mermaidCode);
+    
+    return { success: true };
 }
 
 /**
@@ -500,10 +694,12 @@ export function activate(context: vscode.ExtensionContext) {
             const fullId = tagMatch[1];
             const prefix = fullId.split(/[0-9]/)[0];
             
-            const relatedTags = findRelatedTags(document, prefix);
-            const mermaidCode = generateMermaidDiagram(relatedTags);
+            // Valida e exibe o diagrama
+            const result = validateAndDisplayDiagram(document, prefix, context.extensionUri);
             
-            MDDDDiagramPanel.createOrShow(context.extensionUri, mermaidCode);
+            if (!result.success && result.errorMessage) {
+                vscode.window.showErrorMessage(result.errorMessage);
+            }
         }
     );
     context.subscriptions.push(showDiagramCommand);
