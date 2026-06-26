@@ -8,10 +8,12 @@ class User:
         self.email = email
     
     //@User1.1:place_order method
+    //@->Order:Place order
     def place_order(self, items):
         return Order(self, items)
     
     //@User1.2:make_payment method
+    //@->Payment:Make payment
     def make_payment(self, order):
         return Payment(self, order)
 
