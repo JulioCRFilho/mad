@@ -1,45 +1,91 @@
 import * as vscode from 'vscode';
 import { NodeInfo } from './parser';
 
+export interface ValidationError {
+    line: number;
+    message: string;
+    missingId?: string;
+}
+
 export interface ValidationResult {
     valid: boolean;
-    errors: Array<{ line: number; missingId: string }>;
+    errors: ValidationError[];
 }
 
 /**
- * Valida se todos os IDs referenciados em //@-> existem como nós declarados
+ * Valida a estrutura completa do diagrama:
+ * 1. Todos os //@-> apontam para IDs existentes
+ * 2. Todo sequence node (X.Y) tem pai imediato (X) declarado
+ * 3. Todo entry node (Login1) tem grupo correspondente (Login)
+ * 4. Hierarquia é consistente (ex: Login1.1.1 → Login1.1 → Login1 → Login)
  */
 export function validateDiagram(
     allNodes: NodeInfo[],
     prefix: string
 ): ValidationResult {
-    const errors: Array<{ line: number; missingId: string }> = [];
-
+    const errors: ValidationError[] = [];
     const prefixLower = prefix.toLowerCase();
 
-    // Coleta todos os IDs declarados (não são arrows) que começam com o prefixo
-    const declaredIds = new Set<string>();
+    // Coleta todos os IDs declarados (não são arrows)
+    const declaredIds = new Map<string, NodeInfo>();
     for (const node of allNodes) {
         if (!node.isArrow) {
             const nodeLower = node.id.toLowerCase();
             if (nodeLower.startsWith(prefixLower)) {
-                declaredIds.add(node.id);
+                declaredIds.set(node.id, node);
             }
         }
     }
 
-    // Verifica se todos os //@-> apontam para IDs existentes
+    const declaredIdSet = new Set(declaredIds.keys());
+
+    // 1. Verifica se todos os //@-> apontam para IDs existentes
     for (const node of allNodes) {
         if (node.isArrow) {
             const targetLower = node.id.toLowerCase();
             if (targetLower.startsWith(prefixLower)) {
-                if (!declaredIds.has(node.id)) {
+                if (!declaredIdSet.has(node.id)) {
                     errors.push({
                         line: node.line,
+                        message: `//@->${node.id} aponta para "${node.id}" que não foi declarado. Crie //@${node.id} primeiro.`,
                         missingId: node.id
                     });
                 }
             }
+        }
+    }
+
+    // 2. Valida hierarquia: para cada sequence node, verifica se o pai imediato existe
+    for (const [id, nodeInfo] of declaredIds) {
+        // Só valida nós com pontos (sequence nodes)
+        if (!id.includes('.')) continue;
+
+        // Acha o pai imediato (ex: "Login1.1.1" → pai "Login1.1")
+        const lastDot = id.lastIndexOf('.');
+        const parentId = id.substring(0, lastDot);
+
+        if (!declaredIdSet.has(parentId)) {
+            errors.push({
+                line: nodeInfo.line,
+                message: `"${id}" (linha ${nodeInfo.line + 1}) tem pai "${parentId}" que não foi declarado. Crie //@${parentId} antes.`,
+                missingId: parentId
+            });
+        }
+    }
+
+    // 3. Valida que todo entry node tem um grupo correspondente
+    for (const [id, nodeInfo] of declaredIds) {
+        // Identifica entry node: prefixo + número inteiro (ex: "Login1", "Signup2")
+        const entryMatch = id.match(/^([a-zA-Z_]+)\d+$/);
+        if (!entryMatch) continue;
+
+        const groupId = entryMatch[1];
+        if (!declaredIdSet.has(groupId)) {
+            errors.push({
+                line: nodeInfo.line,
+                message: `"${id}" (linha ${nodeInfo.line + 1}) pertence ao grupo "${groupId}", mas o grupo não foi declarado. Crie //@${groupId} antes.`,
+                missingId: groupId
+            });
         }
     }
 

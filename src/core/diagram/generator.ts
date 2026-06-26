@@ -1,12 +1,22 @@
 import { ProcessedNode } from './parser';
 
 /**
- * Gera o código Mermaid flowchart TD estilizado baseado nas tags relacionadas
- * Usa flowchart TD com cores temáticas do usuário
+ * Extrai o(s) número(s) do ID de um nó para ordenação.
+ * Ex: "Login1" → [1], "Login1.1" → [1, 1], "Login1.1.2" → [1, 1, 2]
  */
-export function generateMermaidDiagram(tags: ProcessedNode[]): string {
+function extractNumbersFromId(id: string): number[] {
+    const match = id.match(/\d+(\.\d+)*/g);
+    if (!match) return [0];
+    return match[0].split('.').map(Number);
+}
+
+/**
+ * Gera o código Mermaid estilizado baseado nas tags relacionadas.
+ * Usa o diagramType salvo (ex: "flowchart TD", "graph TD") com cores temáticas.
+ */
+export function generateMermaidDiagram(tags: ProcessedNode[], diagramType: string = 'flowchart TD'): string {
     if (tags.length === 0) {
-        return 'flowchart TD\n    A[Nenhuma tag relacionada encontrada]';
+        return `${diagramType}\n    A[Nenhuma tag relacionada encontrada]`;
     }
 
     const groups = tags.filter(t => !/\d/.test(t.id));
@@ -14,29 +24,34 @@ export function generateMermaidDiagram(tags: ProcessedNode[]): string {
 
     const sortedGroups = [...groups].sort((a, b) => a.id.localeCompare(b.id));
 
-    // Separa nós de entrada (IDs terminados com número inteiro: ID1, ID2, auth1, Login_15...) de nós subsequentes (ID1.1, ID1.2...)
-    const entryNodes = numbered.filter(t => /^[a-zA-Z_]*[0-9]+$/.test(t.id) || /^[a-zA-Z_]+_[0-9]+$/.test(t.id));
+    // Separa nós de entrada (prefixo + número inteiro: auth1, ID2, Login1...) de nós subsequentes (auth1.1, auth1.2...)
+    // Exclui nós sintéticos de //@-> que têm formato Nome_Numero (ex: Login_0)
+    const entryNodes = numbered.filter(t => /^[a-zA-Z]+[0-9]+$/.test(t.id));
     const sequenceNodes = numbered.filter(t => /\.[0-9]/.test(t.id));
+    const syntheticNodes = numbered.filter(t => /^[a-zA-Z]+_[0-9]+$/.test(t.id));
 
+    // Ordenação correta por números extraídos do ID
     const sortedEntryNodes = [...entryNodes].sort((a, b) => {
-        const numA = parseInt(a.id) || 0;
-        const numB = parseInt(b.id) || 0;
-        return numA - numB;
-    });
-
-    const sortedSequenceNodes = [...sequenceNodes].sort((a, b) => {
-        const numsA = a.id.match(/\d+/g)?.map(Number) || [0];
-        const numsB = b.id.match(/\d+/g)?.map(Number) || [0];
-
+        const numsA = extractNumbersFromId(a.id);
+        const numsB = extractNumbersFromId(b.id);
         for (let i = 0; i < Math.max(numsA.length, numsB.length); i++) {
-            const numA = numsA[i] || 0;
-            const numB = numsB[i] || 0;
-            if (numA !== numB) return numA - numB;
+            const diff = (numsA[i] || 0) - (numsB[i] || 0);
+            if (diff !== 0) return diff;
         }
         return 0;
     });
 
-    let mermaid = 'flowchart TD\n';
+    const sortedSequenceNodes = [...sequenceNodes].sort((a, b) => {
+        const numsA = extractNumbersFromId(a.id);
+        const numsB = extractNumbersFromId(b.id);
+        for (let i = 0; i < Math.max(numsA.length, numsB.length); i++) {
+            const diff = (numsA[i] || 0) - (numsB[i] || 0);
+            if (diff !== 0) return diff;
+        }
+        return 0;
+    });
+
+    let mermaid = `${diagramType}\n`;
     const idToNodeId = new Map<string, string>();
     let nodeIndex = 0;
 
@@ -79,32 +94,12 @@ export function generateMermaidDiagram(tags: ProcessedNode[]): string {
         mermaid += `    end\n`;
     }
 
-    // Nós não alocados (sintéticos de //@->)
-    for (const item of [...sortedEntryNodes, ...sortedSequenceNodes]) {
-        if (!allocated.has(item.id)) {
-            const nodeId = `N${nodeIndex++}`;
-            const safeLabel = item.label.replace(/"/g, '"');
-            idToNodeId.set(item.id, nodeId);
-            mermaid += `    ${nodeId}["${safeLabel}"]\n`;
-
-            // Se o nó tem conexões, verifica se o alvo da conexão está em um grupo
-            // e adiciona uma seta implícita para o grupo pai
-            if (item.connections && item.connections.length > 0) {
-                for (const conn of item.connections) {
-                    const connLower = conn.id.toLowerCase();
-                    const groupEntry = [...sortedGroups].find(g => {
-                        const groupLower = g.id.toLowerCase();
-                        return connLower === groupLower || connLower.startsWith(groupLower);
-                    });
-                    if (groupEntry) {
-                        const parentNode = idToNodeId.get(groupEntry.id);
-                        if (parentNode) {
-                            mermaid += `    ${parentNode} --> ${nodeId}\n`;
-                        }
-                    }
-                }
-            }
-        }
+    // Nós sintéticos (//@->) que sempre ficam fora dos grupos
+    for (const item of syntheticNodes) {
+        const nodeId = `N${nodeIndex++}`;
+        const safeLabel = item.label.replace(/"/g, '"');
+        idToNodeId.set(item.id, nodeId);
+        mermaid += `    ${nodeId}["${safeLabel}"]\n`;
     }
 
     const edges = new Set<string>();
@@ -142,7 +137,7 @@ export function generateMermaidDiagram(tags: ProcessedNode[]): string {
     }
 
     // Conexões explícitas (//@->ID:desc)
-    for (const item of [...sortedEntryNodes, ...sortedSequenceNodes]) {
+    for (const item of [...sortedEntryNodes, ...sortedSequenceNodes, ...syntheticNodes]) {
         const src = idToNodeId.get(item.id);
         if (!src) continue;
 

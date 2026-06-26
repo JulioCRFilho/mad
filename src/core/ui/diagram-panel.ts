@@ -64,6 +64,12 @@ export class MDDDDiagramPanel {
             text: '#333333'
         };
 
+        // Escapa o código Mermaid para inserção segura no JS
+        const escapedMermaidCode = mermaidCode
+            .replace(/\\/g, '\\\\')
+            .replace(/`/g, '\\`')
+            .replace(/\$/g, '\\$');
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -74,23 +80,77 @@ export class MDDDDiagramPanel {
     <style>
         body {
             font-family: var(--vscode-font-family);
-            padding: 20px;
+            padding: 0;
+            margin: 0;
             background-color: ${colors.background};
             color: ${colors.text};
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            background-color: ${colors.secondary};
+            border-bottom: 1px solid ${colors.line}33;
+            flex-shrink: 0;
+            align-items: center;
+        }
+        .toolbar button {
+            background: ${colors.primary};
+            color: ${colors.primaryText};
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            transition: opacity 0.2s;
+        }
+        .toolbar button:hover {
+            opacity: 0.85;
+        }
+        .toolbar button.secondary {
+            background: transparent;
+            color: ${colors.text};
+            border: 1px solid ${colors.line}66;
+        }
+        .toolbar .status {
+            margin-left: auto;
+            font-size: 11px;
+            opacity: 0.7;
+        }
+        .mermaid-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 24px;
+            overflow: auto;
         }
         .mermaid {
             display: flex;
             justify-content: center;
-            align-items: center;
             min-height: 200px;
+            width: 100%;
         }
     </style>
 </head>
 <body>
-    <div class="mermaid">
-        ${mermaidCode}
+    <div class="toolbar">
+        <button onclick="copyToClipboard()" title="Copiar código Mermaid">📋 Copy</button>
+        <button class="secondary" onclick="exportAsSVG()" title="Exportar como SVG">📥 Export SVG</button>
+        <span class="status" id="status"></span>
+    </div>
+    <div class="mermaid-container">
+        <div class="mermaid" id="mermaidContainer">
+            ${mermaidCode}
+        </div>
     </div>
     <script>
+        const MERMAID_CODE = \`${escapedMermaidCode}\`;
+
         mermaid.initialize({
             startOnLoad: true,
             theme: '${isDarkTheme ? 'dark' : 'default'}',
@@ -103,6 +163,48 @@ export class MDDDDiagramPanel {
                 tertiaryColor: '${colors.tertiary}'
             }
         });
+
+        function setStatus(msg, isError) {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.style.color = isError ? '#e74c3c' : '';
+            setTimeout(() => { el.textContent = ''; }, 3000);
+        }
+
+        async function copyToClipboard() {
+            try {
+                await navigator.clipboard.writeText(MERMAID_CODE);
+                setStatus('✓ Copied!');
+            } catch (err) {
+                setStatus('✗ Copy failed', true);
+            }
+        }
+
+        async function exportAsSVG() {
+            try {
+                // Aguarda renderização
+                await mermaid.run({ nodes: [document.getElementById('mermaidContainer')] });
+                const svgEl = document.querySelector('.mermaid svg');
+                if (!svgEl) {
+                    setStatus('✗ No SVG found', true);
+                    return;
+                }
+                const svgClone = svgEl.cloneNode(true);
+                svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(svgClone);
+                const blob = new Blob([svgString], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'diagram.svg';
+                a.click();
+                URL.revokeObjectURL(url);
+                setStatus('✓ SVG exported');
+            } catch (err) {
+                setStatus('✗ Export failed', true);
+            }
+        }
     </script>
 </body>
 </html>`;

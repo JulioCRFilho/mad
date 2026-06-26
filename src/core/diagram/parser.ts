@@ -16,6 +16,19 @@ export interface ProcessedNode {
 }
 
 /**
+ * Lê o tipo de diagrama da primeira linha do arquivo.
+ * Formato esperado: //@::DiagramType
+ * Exemplo: //@::flowchart TD
+ * Retorna "flowchart TD" como fallback se não encontrar.
+ */
+export function readDiagramType(document: vscode.TextDocument): string {
+    const text = document.getText();
+    const firstLine = text.split(/\r?\n/)[0] || '';
+    const match = firstLine.match(/\/\/@::(.+)/);
+    return match ? match[1].trim() : 'flowchart TD';
+}
+
+/**
  * Filtra todos os nós //@ do documento
  */
 export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
