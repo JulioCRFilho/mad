@@ -77,6 +77,7 @@ export class MDDDDiagramPanel {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diagrama Mermaid</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
     <style>
         body {
             font-family: var(--vscode-font-family);
@@ -96,6 +97,7 @@ export class MDDDDiagramPanel {
             border-bottom: 1px solid ${colors.line}33;
             flex-shrink: 0;
             align-items: center;
+            flex-wrap: wrap;
         }
         .toolbar button {
             background: ${colors.primary};
@@ -107,6 +109,7 @@ export class MDDDDiagramPanel {
             font-size: 12px;
             font-family: inherit;
             transition: opacity 0.2s;
+            white-space: nowrap;
         }
         .toolbar button:hover {
             opacity: 0.85;
@@ -120,6 +123,20 @@ export class MDDDDiagramPanel {
             margin-left: auto;
             font-size: 11px;
             opacity: 0.7;
+        }
+        .toolbar .search-input {
+            background: ${colors.tertiary};
+            border: 1px solid ${colors.line}66;
+            color: ${colors.text};
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: inherit;
+            width: 160px;
+        }
+        .toolbar .search-input:focus {
+            outline: none;
+            border-color: ${colors.primary};
         }
         .mermaid-container {
             flex: 1;
@@ -135,21 +152,49 @@ export class MDDDDiagramPanel {
             min-height: 200px;
             width: 100%;
         }
+        .zoom-controls {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .zoom-controls button {
+            padding: 4px 8px;
+            font-size: 11px;
+            min-width: 28px;
+        }
+        .zoom-controls span {
+            font-size: 11px;
+            opacity: 0.7;
+            min-width: 36px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="toolbar">
         <button onclick="copyToClipboard()" title="Copiar código Mermaid">📋 Copy</button>
-        <button class="secondary" onclick="exportAsSVG()" title="Exportar como SVG">📥 Export SVG</button>
+        <button class="secondary" onclick="exportAsSVG()" title="Exportar como SVG">📥 SVG</button>
+        <button class="secondary" onclick="exportAsPNG()" title="Exportar como PNG">🖼 PNG</button>
+        <div class="zoom-controls">
+            <button onclick="zoomOut()" title="Zoom out">−</button>
+            <span id="zoomLevel">100%</span>
+            <button onclick="zoomIn()" title="Zoom in">+</button>
+            <button onclick="resetZoom()" title="Reset zoom">↺</button>
+        </div>
+        <input type="text" class="search-input" id="searchInput" placeholder="🔍 Search nodes..." oninput="filterNodes(this.value)" />
         <span class="status" id="status"></span>
     </div>
-    <div class="mermaid-container">
-        <div class="mermaid" id="mermaidContainer">
+    <div class="mermaid-container" id="mermaidContainer">
+        <div class="mermaid" id="mermaidContent">
             ${mermaidCode}
         </div>
     </div>
     <script>
         const MERMAID_CODE = \`${escapedMermaidCode}\`;
+        let currentZoom = 1.0;
+        const ZOOM_STEP = 0.1;
+        const MIN_ZOOM = 0.3;
+        const MAX_ZOOM = 3.0;
 
         mermaid.initialize({
             startOnLoad: true,
@@ -171,6 +216,28 @@ export class MDDDDiagramPanel {
             setTimeout(() => { el.textContent = ''; }, 3000);
         }
 
+        function updateZoom() {
+            const el = document.getElementById('mermaidContent');
+            el.style.transform = \`scale(\${currentZoom})\`;
+            el.style.transformOrigin = 'center top';
+            document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+        }
+
+        function zoomIn() {
+            currentZoom = Math.min(currentZoom + ZOOM_STEP, MAX_ZOOM);
+            updateZoom();
+        }
+
+        function zoomOut() {
+            currentZoom = Math.max(currentZoom - ZOOM_STEP, MIN_ZOOM);
+            updateZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1.0;
+            updateZoom();
+        }
+
         async function copyToClipboard() {
             try {
                 await navigator.clipboard.writeText(MERMAID_CODE);
@@ -182,8 +249,7 @@ export class MDDDDiagramPanel {
 
         async function exportAsSVG() {
             try {
-                // Aguarda renderização
-                await mermaid.run({ nodes: [document.getElementById('mermaidContainer')] });
+                await mermaid.run({ nodes: [document.getElementById('mermaidContent')] });
                 const svgEl = document.querySelector('.mermaid svg');
                 if (!svgEl) {
                     setStatus('✗ No SVG found', true);
@@ -205,6 +271,85 @@ export class MDDDDiagramPanel {
                 setStatus('✗ Export failed', true);
             }
         }
+
+        async function exportAsPNG() {
+            try {
+                await mermaid.run({ nodes: [document.getElementById('mermaidContent')] });
+                const container = document.getElementById('mermaidContainer');
+                // Reset zoom temporarily for full quality export
+                const originalZoom = currentZoom;
+                currentZoom = 1.0;
+                updateZoom();
+                // Wait for re-render
+                await new Promise(r => setTimeout(r, 100));
+                const canvas = await htmlToImage.toCanvas(container, {
+                    backgroundColor: '${colors.background}',
+                    pixelRatio: 2,
+                    filter: (node) => {
+                        // Exclude toolbar from screenshot
+                        return !node.classList || !node.classList.contains('toolbar');
+                    }
+                });
+                currentZoom = originalZoom;
+                updateZoom();
+                const link = document.createElement('a');
+                link.download = 'diagram.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                setStatus('✓ PNG exported');
+            } catch (err) {
+                // Restore zoom on error
+                currentZoom = 1.0;
+                updateZoom();
+                setStatus('✗ PNG export failed: ' + err.message, true);
+            }
+        }
+
+        function filterNodes(query) {
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+            const allNodes = svg.querySelectorAll('[id^="flowchart-"], [id^="graph-"], .cluster, .node');
+            allNodes.forEach(node => {
+                const text = node.textContent.toLowerCase();
+                const rects = node.querySelectorAll('rect, ellipse, polygon');
+                if (!query) {
+                    node.style.opacity = '1';
+                    node.style.filter = '';
+                    return;
+                }
+                const matches = text.includes(query.toLowerCase());
+                node.style.opacity = matches ? '1' : '0.15';
+                node.style.filter = matches ? 'brightness(1.2)' : 'grayscale(1)';
+            });
+            setStatus(query ? \`Filtered: "\${query}"\` : 'Filter cleared');
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === '=' || e.key === '+') {
+                    e.preventDefault();
+                    zoomIn();
+                } else if (e.key === '-') {
+                    e.preventDefault();
+                    zoomOut();
+                } else if (e.key === '0') {
+                    e.preventDefault();
+                    resetZoom();
+                }
+            }
+            if (e.key === 'Escape') {
+                document.getElementById('searchInput').value = '';
+                filterNodes('');
+            }
+            if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+                const input = document.getElementById('searchInput');
+                if (document.activeElement !== input) {
+                    e.preventDefault();
+                    input.focus();
+                }
+            }
+        });
     </script>
 </body>
 </html>`;

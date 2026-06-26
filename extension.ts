@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
 import { MDDDDecorationManager } from './src/core/ui/decoration-manager';
 import { validateAndDisplayDiagram, DiagramCommandContext } from './src/core/commands/diagram-command';
+import { MDDDHoverProvider } from './src/core/ui/hover-provider';
+import { MDDDDocumentSymbolProvider } from './src/core/ui/document-symbols';
+import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('MDDD Extension está ativa');
 
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
 
+    // ── Decoration Manager (ícone na gutter) ──
     const decorationManager = new MDDDDecorationManager(iconPath);
     context.subscriptions.push(decorationManager);
 
@@ -15,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
         decorationManager.apply(editor, decorations);
     };
 
+    // ── Comando: Abrir diagrama ──
     const showDiagramCommand = vscode.commands.registerCommand(
         'mddd.showDiagram',
         (lineNumber: number) => {
@@ -44,6 +49,117 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showDiagramCommand);
 
+    // ── Comando: Navegar para linha específica ──
+    const goToLineCommand = vscode.commands.registerCommand(
+        'mddd.goToLine',
+        (lineNumber: number) => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) return;
+
+            const line = Math.max(0, Math.min(lineNumber, editor.document.lineCount - 1));
+            const targetRange = new vscode.Range(line, 0, line, 0);
+            editor.selection = new vscode.Selection(line, 0, line, 0);
+            editor.revealRange(targetRange, vscode.TextEditorRevealType.InCenter);
+        }
+    );
+    context.subscriptions.push(goToLineCommand);
+
+    // ── Comando: Abrir diagrama do prefixo sob o cursor ──
+    const showDiagramAtCursorCommand = vscode.commands.registerCommand(
+        'mddd.showDiagramAtCursor',
+        () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) return;
+
+            const lineNumber = editor.selection.active.line;
+            vscode.commands.executeCommand('mddd.showDiagram', lineNumber);
+        }
+    );
+    context.subscriptions.push(showDiagramAtCursorCommand);
+
+    // ── Comando: Mostrar estatísticas do diagrama ──
+    const showStatsCommand = vscode.commands.registerCommand(
+        'mddd.showStats',
+        () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) return;
+
+            const allNodes = filterAllNodes(editor.document);
+            const diagramType = readDiagramType(editor.document);
+
+            const declared = allNodes.filter((n: { isArrow: boolean }) => !n.isArrow);
+            const forward = allNodes.filter((n: { isArrow: boolean }) => n.isArrow);
+
+            const groups = declared.filter((n: { id: string }) => !/\d/.test(n.id));
+            const entries = declared.filter((n: { id: string }) => /^[a-zA-Z_]+[0-9]+$/.test(n.id));
+            const sequences = declared.filter((n: { id: string }) => /\.[0-9]+/.test(n.id));
+
+            const msg = [
+                `**📊 MDDD Stats**`,
+                ``,
+                `**Tipo:** \`${diagramType}\``,
+                `**Total de tags:** ${allNodes.length}`,
+                ``,
+                `**Declarados:** ${declared.length}`,
+                `  ┣ Grupos: ${groups.length}`,
+                `  ┣ Entry Nodes: ${entries.length}`,
+                `  ┗ Sequence Nodes: ${sequences.length}`,
+                `**Forward Pointers:** ${forward.length}`,
+            ].join('\n');
+
+            vscode.window.showInformationMessage(msg, { modal: false });
+        }
+    );
+    context.subscriptions.push(showStatsCommand);
+
+    // ── Hover Provider: tooltip com informações da tag ──
+    const hoverProvider = vscode.languages.registerHoverProvider(
+        [
+            { language: 'javascript' },
+            { language: 'typescript' },
+            { language: 'python' },
+            { language: 'java' },
+            { language: 'csharp' },
+            { language: 'go' },
+            { language: 'rust' },
+            { language: 'php' },
+            { language: 'dart' },
+            { language: 'ruby' },
+            { language: 'swift' },
+            { language: 'kotlin' },
+            { language: 'scala' },
+            { language: 'cpp' },
+            { language: 'c' }
+        ],
+        new MDDDHoverProvider()
+    );
+    context.subscriptions.push(hoverProvider);
+
+    // ── DocumentSymbol Provider: outline com árvore de tags ──
+    context.subscriptions.push(
+        vscode.languages.registerDocumentSymbolProvider(
+            [
+                { language: 'javascript' },
+                { language: 'typescript' },
+                { language: 'python' },
+                { language: 'java' },
+                { language: 'csharp' },
+                { language: 'go' },
+                { language: 'rust' },
+                { language: 'php' },
+                { language: 'dart' },
+                { language: 'ruby' },
+                { language: 'swift' },
+                { language: 'kotlin' },
+                { language: 'scala' },
+                { language: 'cpp' },
+                { language: 'c' }
+            ],
+            new MDDDDocumentSymbolProvider()
+        )
+    );
+
+    // ── Click detection para abrir diagrama ──
     let lastClickLine = -1;
     const clickDetection = vscode.window.onDidChangeTextEditorSelection(event => {
         const editor = event.textEditor;
@@ -66,6 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(clickDetection);
 
+    // ── Listeners de mudança ──
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor) updateDecorations(editor);
     }));
@@ -75,6 +192,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (editor && event.document === editor.document) updateDecorations(editor);
     }));
 
+    // ── Atualiza decorações iniciais ──
     if (vscode.window.activeTextEditor) {
         updateDecorations(vscode.window.activeTextEditor);
     }
