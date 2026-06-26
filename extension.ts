@@ -178,12 +178,15 @@ export function activate(context: vscode.ExtensionContext) {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
             vscode.commands.executeCommand('editor.unfoldAllMarkerRegions');
+            // Marca cooldown de 5 minutos para este arquivo
+            const fileKey = editor.document.uri.toString();
+            unfoldCooldowns.set(fileKey, Date.now() + 5 * 60 * 1000);
         }
     );
     context.subscriptions.push(unfoldAllTagsCommand);
 
-    // ── Auto-fold tags APENAS na primeira abertura do arquivo ──
-    const foldedFiles = new Set<string>();
+    // ── Auto-fold tags ao abrir arquivo (com cooldown de 5min após unfold) ──
+    const unfoldCooldowns = new Map<string, number>();
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(document => {
@@ -191,18 +194,32 @@ export function activate(context: vscode.ExtensionContext) {
             if (!text.includes('//@')) return;
 
             const fileKey = document.uri.toString();
-            // Só folda se nunca foi aberto antes
-            if (!foldedFiles.has(fileKey)) {
-                foldedFiles.add(fileKey);
-                setTimeout(() => {
-                    const editor = vscode.window.activeTextEditor;
-                    if (editor && editor.document === document) {
+            const cooldownUntil = unfoldCooldowns.get(fileKey);
+            
+            // Se está em cooldown, não folda
+            if (cooldownUntil && Date.now() < cooldownUntil) return;
+
+            setTimeout(() => {
+                const editor = vscode.window.activeTextEditor;
+                if (editor && editor.document === document) {
+                    const cooldown = unfoldCooldowns.get(fileKey);
+                    if (!cooldown || Date.now() >= cooldown) {
                         vscode.commands.executeCommand('editor.foldAllMarkerRegions');
                     }
-                }, 100);
-            }
+                }
+            }, 100);
         })
     );
+
+    // Limpa cooldowns antigos (mais de 10 minutos)
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, cooldown] of unfoldCooldowns.entries()) {
+            if (now > cooldown + 10 * 60 * 1000) {
+                unfoldCooldowns.delete(key);
+            }
+        }
+    }, 60 * 1000);
 
     // ── DocumentSymbol Provider: outline com árvore de tags ──
     context.subscriptions.push(
