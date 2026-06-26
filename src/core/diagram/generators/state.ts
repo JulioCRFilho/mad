@@ -11,6 +11,7 @@ export const stateGenerator: DiagramGenerator = {
         let mermaid = `${diagramType}\n`;
         const states = new Map<string, string[]>();
         const transitions: string[] = [];
+        const addedEdges = new Set<string>();
 
         for (const tag of tags) {
             // Ignora conexões diretas (//@Source->Target) - serão processadas depois
@@ -35,7 +36,6 @@ export const stateGenerator: DiagramGenerator = {
         }
 
         // Processa conexões diretas (//@Source->Target)
-        const edges = new Set<string>();
         for (const tag of tags) {
             if (tag.id.includes('->')) {
                 const [source, target] = tag.id.split('->');
@@ -47,9 +47,22 @@ export const stateGenerator: DiagramGenerator = {
                     if (src === dst) continue;
                     
                     const key = `${src}->${dst}`;
-                    if (!edges.has(key)) {
-                        edges.add(key);
+                    if (!addedEdges.has(key)) {
+                        addedEdges.add(key);
                         transitions.push(`    ${src} --> ${dst}${tag.description ? ': ' + tag.description : ''}`);
+                    }
+                }
+            }
+        }
+
+        // Processa conexões de tag.connections (vindas do pipeline de diagram-command)
+        for (const tag of tags) {
+            if (!/\d/.test(tag.id) && tag.connections && tag.connections.length > 0) {
+                for (const conn of tag.connections) {
+                    const key = `${tag.id}->${conn.id}`;
+                    if (!addedEdges.has(key)) {
+                        addedEdges.add(key);
+                        transitions.push(`    ${tag.id} --> ${conn.id}${conn.label ? ': ' + conn.label : ''}`);
                     }
                 }
             }
