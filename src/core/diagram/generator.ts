@@ -58,7 +58,8 @@ export function generateMermaidDiagram(tags: ProcessedNode[], diagramType: strin
     const allocated = new Set<string>();
 
     for (const group of sortedGroups) {
-        const safeLabel = group.label.replace(/"/g, '"');
+        // Grupos não precisam de formatação de label, usar o ID diretamente
+        const safeLabel = group.id.replace(/"/g, '"');
         mermaid += `    subgraph ${safeLabel}\n`;
 
         // Nós de entrada (números inteiros) que pertencem a este grupo
@@ -70,7 +71,7 @@ export function generateMermaidDiagram(tags: ProcessedNode[], diagramType: strin
 
         for (const entry of groupEntryNodes) {
             const nodeId = `N${nodeIndex++}`;
-            const safeLabel = entry.label.replace(/"/g, '"');
+            const safeLabel = entry.label.replace(/"/g, '"').replace(/\n/g, ' ');
             idToNodeId.set(entry.id, nodeId);
             mermaid += `        ${nodeId}["${safeLabel}"]\n`;
             allocated.add(entry.id);
@@ -85,7 +86,7 @@ export function generateMermaidDiagram(tags: ProcessedNode[], diagramType: strin
 
         for (const seq of groupSequenceNodes) {
             const nodeId = `N${nodeIndex++}`;
-            const safeLabel = seq.label.replace(/"/g, '"');
+            const safeLabel = seq.label.replace(/"/g, '"').replace(/\n/g, ' ');
             idToNodeId.set(seq.id, nodeId);
             mermaid += `        ${nodeId}["${safeLabel}"]\n`;
             allocated.add(seq.id);
@@ -97,7 +98,7 @@ export function generateMermaidDiagram(tags: ProcessedNode[], diagramType: strin
     // Nós sintéticos (//@->) que sempre ficam fora dos grupos
     for (const item of syntheticNodes) {
         const nodeId = `N${nodeIndex++}`;
-        const safeLabel = item.label.replace(/"/g, '"');
+        const safeLabel = item.label.replace(/"/g, '"').replace(/\n/g, ' ');
         idToNodeId.set(item.id, nodeId);
         mermaid += `    ${nodeId}["${safeLabel}"]\n`;
     }

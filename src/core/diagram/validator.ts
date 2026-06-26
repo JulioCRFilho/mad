@@ -10,6 +10,7 @@ export interface ValidationError {
 export interface ValidationResult {
     valid: boolean;
     errors: ValidationError[];
+    warnings?: ValidationError[];
 }
 
 /**
@@ -26,14 +27,11 @@ export function validateDiagram(
     const errors: ValidationError[] = [];
     const prefixLower = prefix.toLowerCase();
 
-    // Coleta todos os IDs declarados (não são arrows)
+    // Coleta TODOS os IDs declarados (não são arrows)
     const declaredIds = new Map<string, NodeInfo>();
     for (const node of allNodes) {
         if (!node.isArrow) {
-            const nodeLower = node.id.toLowerCase();
-            if (nodeLower.startsWith(prefixLower)) {
-                declaredIds.set(node.id, node);
-            }
+            declaredIds.set(node.id, node);
         }
     }
 
@@ -42,15 +40,12 @@ export function validateDiagram(
     // 1. Verifica se todos os //@-> apontam para IDs existentes
     for (const node of allNodes) {
         if (node.isArrow) {
-            const targetLower = node.id.toLowerCase();
-            if (targetLower.startsWith(prefixLower)) {
-                if (!declaredIdSet.has(node.id)) {
-                    errors.push({
-                        line: node.line,
-                        message: `//@->${node.id} aponta para "${node.id}" que não foi declarado. Crie //@${node.id} primeiro.`,
-                        missingId: node.id
-                    });
-                }
+            if (!declaredIdSet.has(node.id)) {
+                errors.push({
+                    line: node.line,
+                    message: `//@->${node.id} aponta para "${node.id}" que não foi declarado. Crie //@${node.id} primeiro.`,
+                    missingId: node.id
+                });
             }
         }
     }

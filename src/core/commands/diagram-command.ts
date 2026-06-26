@@ -27,7 +27,8 @@ function extractCodeLine(document: vscode.TextDocument, tagLine: number): string
         j++;
     }
     if (j < lines.length) {
-        return lines[j];
+        // Remove quebras de linha e espaços extras
+        return lines[j].replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
     }
     return null;
 }
@@ -46,9 +47,11 @@ function processRetroPointers(
     for (const node of retroPointers) {
         if (!node.id.toLowerCase().startsWith(prefixLower)) continue;
 
+        // Grupos (IDs sem números) usam o ID diretamente, sem formatação
+        const isGroup = !/\d/.test(node.id);
         const codeLine = extractCodeLine(document, node.line);
         const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
-        const label = identifier ? formatCodeToLabel(identifier) : node.id;
+        const label = isGroup ? node.id : (identifier ? formatCodeToLabel(identifier) : node.id);
 
         result.push({
             line: node.line,
@@ -84,49 +87,84 @@ function findRetroNodeForLine(
 }
 
 /**
+ * Agrupa forward pointers consecutivos (mesma linha) em um único nó sintético
+ */
+function groupConsecutiveForwardPointers(
+    forwardPointers: Array<{ line: number; id: string; description: string | null }>
+): Array<{ line: number; ids: string[]; descriptions: Map<string, string> }> {
+    const grouped: Array<{ line: number; ids: string[]; descriptions: Map<string, string> }> = [];
+    
+    for (const node of forwardPointers) {
+        // Verifica se já existe um grupo para esta linha
+        const existing = grouped.find(g => g.line === node.line);
+        if (existing) {
+            existing.ids.push(node.id);
+            if (node.description) {
+                existing.descriptions.set(node.id, node.description);
+            }
+        } else {
+            grouped.push({
+                line: node.line,
+                ids: [node.id],
+                descriptions: node.description ? new Map([[node.id, node.description]]) : new Map()
+            });
+        }
+    }
+    
+    return grouped;
+}
+
+/**
  * Processa nós forward (//@->ID).
- * Se a linha de código já tem um nó retro associado, adiciona a conexão a esse nó.
- * Caso contrário, cria um nó sintético.
+ * Se a linha de código já tem um nó retro associado, adiciona as conexões a esse nó.
+ * Caso contrário, cria um nó sintético com múltiplas conexões.
  */
 function processForwardPointers(
     document: vscode.TextDocument,
     forwardPointers: Array<{ line: number; id: string; description: string | null }>,
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
-    prefix: string
+    _prefix: string
 ): {
     syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string }> }>;
     extraConnections: Array<{ sourceId: string; targetId: string; label: string }>;
 } {
-    const prefixLower = prefix.toLowerCase();
     const syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string }> }> = [];
     const extraConnections: Array<{ sourceId: string; targetId: string; label: string }> = [];
 
-    for (const node of forwardPointers) {
-        if (!node.id.toLowerCase().startsWith(prefixLower)) continue;
+    // Agrupa forward pointers consecutivos
+    const grouped = groupConsecutiveForwardPointers(forwardPointers);
 
+    for (const group of grouped) {
         // Verifica se já existe um nó retro associado à mesma linha de código
-        const existingRetro = findRetroNodeForLine(retroNodes, document, node.line);
+        const existingRetro = findRetroNodeForLine(retroNodes, document, group.line);
 
         if (existingRetro) {
-            // Adiciona conexão ao nó retro existente
-            extraConnections.push({
-                sourceId: existingRetro.id,
-                targetId: node.id,
-                label: node.description || ''
-            });
+            // Adiciona todas as conexões ao nó retro existente
+            for (const targetId of group.ids) {
+                extraConnections.push({
+                    sourceId: existingRetro.id,
+                    targetId: targetId,
+                    label: group.descriptions.get(targetId) || ''
+                });
+            }
         } else {
-            // Cria nó sintético
-            const codeLine = extractCodeLine(document, node.line);
+            // Cria um único nó sintético com múltiplas conexões
+            const codeLine = extractCodeLine(document, group.line);
             const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
             const sourceName = identifier || 'Unknown';
-            const syntheticId = `${sourceName}_${node.line}`;
-            const label = identifier ? formatCodeToLabel(identifier) : node.id;
+            const syntheticId = `${sourceName}_${group.line}`;
+            const label = identifier ? formatCodeToLabel(identifier) : sourceName;
+
+            const connections = group.ids.map(targetId => ({
+                id: targetId,
+                label: group.descriptions.get(targetId) || ''
+            }));
 
             syntheticNodes.push({
-                line: node.line,
+                line: group.line,
                 id: syntheticId,
                 label: label,
-                connections: [{ id: node.id, label: node.description || '' }]
+                connections: connections
             });
         }
     }
@@ -201,13 +239,30 @@ function filterAndSortNodes(
 
 /**
  * Pipeline completo: filtra nós → separa tipos → processa retro → processa forward → filtra, ordena e retorna.
+ * Retorna TODAS as tags do documento (não filtra por prefixo).
  */
-function findRelatedTags(document: vscode.TextDocument, prefix: string): ProcessedNode[] {
+function findRelatedTags(document: vscode.TextDocument, _prefix: string): ProcessedNode[] {
     const allNodes = filterAllNodes(document);
     const { retroPointers, forwardPointers } = splitNodes(allNodes);
 
-    const processedRetro = processRetroPointers(document, retroPointers, prefix);
-    const { syntheticNodes, extraConnections } = processForwardPointers(document, forwardPointers, processedRetro, prefix);
+    // Processa TODOS os retro pointers (sem filtro de prefixo)
+    const processedRetro = retroPointers.map(node => {
+        // Grupos (IDs sem números) usam o ID diretamente, sem formatação
+        const isGroup = !/\d/.test(node.id);
+        const codeLine = extractCodeLine(document, node.line);
+        const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
+        const label = isGroup ? node.id : (identifier ? formatCodeToLabel(identifier) : node.id);
+
+        return {
+            line: node.line,
+            id: node.id,
+            label: label,
+            description: node.description
+        };
+    });
+
+    // Processa TODOS os forward pointers
+    const { syntheticNodes, extraConnections } = processForwardPointers(document, forwardPointers, processedRetro, _prefix);
 
     return filterAndSortNodes(processedRetro, syntheticNodes, extraConnections);
 }
@@ -222,7 +277,7 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     // Step 2: Filter all nodes
     const allNodes = filterAllNodes(context.document);
 
-    // Step 3: Validate diagram structure
+    // Step 3: Validate diagram structure (regras MDDD)
     const validation = validateDiagram(allNodes, context.prefix);
 
     if (!validation.valid) {
@@ -232,7 +287,7 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
 
         return {
             success: false,
-            errorMessage: `Diagrama inválido:\n${errorMessages}`
+            errorMessage: `Erro no diagrama:\n${errorMessages}`
         };
     }
 
@@ -242,8 +297,76 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     // Step 5: Generate diagram with saved diagram type
     const mermaidCode = generateMermaidDiagram(relatedTags, diagramType);
 
-    // Step 6: Display diagram
+    // Step 6: Validate sintaxe Mermaid (validação básica)
+    const mermaidValidation = validateMermaidSyntax(mermaidCode, diagramType);
+    if (!mermaidValidation.valid) {
+        return {
+            success: false,
+            errorMessage: `Erro de sintaxe Mermaid:\n${mermaidValidation.error}`
+        };
+    }
+
+    // Step 7: Display diagram
     MDDDDiagramPanel.createOrShow(context.extensionUri, mermaidCode);
 
     return { success: true };
+}
+
+/**
+ * Validação básica de sintaxe Mermaid
+ */
+function validateMermaidSyntax(mermaidCode: string, diagramType: string): { valid: boolean; error?: string } {
+    const lines = mermaidCode.split('\n').filter(l => l.trim() && !l.trim().startsWith('subgraph'));
+    
+    // Verifica se há pelo menos um nó ou conexão
+    const hasNodes = lines.some(l => /^[A-Za-z0-9_]+\[/.test(l.trim()));
+    const hasConnections = lines.some(l => /-->/.test(l) || /---/.test(l) || /==>/.test(l));
+    
+    if (!hasNodes && !hasConnections && diagramType !== 'pie' && diagramType !== 'journey') {
+        return {
+            valid: false,
+            error: 'Nenhum nó ou conexão encontrada. Verifique se as tags estão corretas.'
+        };
+    }
+
+    // Verifica se há IDs duplicados
+    const ids = new Set<string>();
+    const idRegex = /^([A-Za-z0-9_]+)\[/;
+    
+    for (const line of lines) {
+        const match = line.match(idRegex);
+        if (match) {
+            const id = match[1];
+            if (ids.has(id)) {
+                return {
+                    valid: false,
+                    error: `ID duplicado: "${id}". Cada nó deve ter um ID único.`
+                };
+            }
+            ids.add(id);
+        }
+    }
+
+    // Verifica se há conexões para IDs que não existem
+    const connectionRegex = /([A-Za-z0-9_]+)(-->|==>|---)([A-Za-z0-9_]+)/;
+    for (const line of lines) {
+        const match = line.match(connectionRegex);
+        if (match) {
+            const [, from, , to] = match;
+            if (!ids.has(from) && from !== 'subgraph') {
+                return {
+                    valid: false,
+                    error: `Conexão de "${from}" mas este nó não foi definido.`
+                };
+            }
+            if (!ids.has(to)) {
+                return {
+                    valid: false,
+                    error: `Conexão para "${to}" mas este nó não foi definido.`
+                };
+            }
+        }
+    }
+
+    return { valid: true };
 }

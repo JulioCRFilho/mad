@@ -40,7 +40,8 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
         const line = lines[i];
 
         // Verifica //@->ID:comentário (forward pointer)
-        const arrowMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
+        // ID pode conter -> para transições (ex: LoggedOut->LoggedIn)
+        const arrowMatch = line.match(/\/\/@->([\w.]+(?:->[\w.]+)*)(?::([^\n]+))?/);
         if (arrowMatch) {
             allNodes.push({
                 line: i,
