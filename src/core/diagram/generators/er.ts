@@ -1,6 +1,52 @@
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator } from './types';
 
+/**
+ * Extrai atributos de um bloco CREATE TABLE
+ */
+function extractCreateTableAttributes(code: string): string[] {
+    const attrs: string[] = [];
+    
+    // Encontra o bloco entre parênteses
+    const match = code.match(/CREATE\s+TABLE\s+\w+\s*\(([\s\S]+)\)/i);
+    if (!match) return attrs;
+    
+    const columnsBlock = match[1];
+    
+    // Split inteligente por vírgulas, respeitando parênteses
+    const lines: string[] = [];
+    let current = '';
+    let depth = 0;
+    
+    for (const char of columnsBlock) {
+        if (char === '(') depth++;
+        else if (char === ')') depth--;
+        
+        if (char === ',' && depth === 0) {
+            lines.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    if (current.trim()) lines.push(current.trim());
+    
+    for (const line of lines) {
+        // Ignora linhas que são constraints (PRIMARY KEY, FOREIGN KEY, etc.)
+        if (/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT|INDEX|KEY)/i.test(line)) {
+            continue;
+        }
+        
+        // Extrai o nome da coluna (primeira palavra antes de espaço ou parêntese)
+        const columnMatch = line.match(/^(\w+)/);
+        if (columnMatch) {
+            attrs.push(columnMatch[1]);
+        }
+    }
+    
+    return attrs;
+}
+
 export const erGenerator: DiagramGenerator = {
     type: 'erDiagram',
     matches(diagramType: string): boolean {
@@ -12,30 +58,44 @@ export const erGenerator: DiagramGenerator = {
         const relationships: string[] = [];
 
         for (const tag of tags) {
-            if (!/\d/.test(tag.id)) {
-                if (!entities.has(tag.id)) entities.set(tag.id, []);
+            // Ignora relacionamentos (tags com ->)
+            if (tag.id.includes('->')) {
                 continue;
             }
 
-            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
-            if (groupMatch) {
-                const groupId = groupMatch[1];
-                if (entities.has(groupId)) entities.get(groupId)!.push(tag.label);
-            }
-
-            if (tag.connections && tag.connections.length > 0) {
-                for (const conn of tag.connections) {
-                    relationships.push(`    ${tag.id.match(/^([a-zA-Z_]+)/)?.[1] || tag.id} ||--o{ ${conn.id} : ${conn.label || 'has'}`);
+            // Entidades (IDs sem números)
+            if (!/\d/.test(tag.id)) {
+                if (!entities.has(tag.id)) {
+                    entities.set(tag.id, []);
+                }
+                
+                // Extrai atributos do código SQL no label
+                if (tag.label && tag.label.toUpperCase().startsWith('CREATE TABLE')) {
+                    const attrs = extractCreateTableAttributes(tag.label);
+                    entities.set(tag.id, attrs);
+                }
+                
+                // Processa conexões desta entidade
+                if (tag.connections && tag.connections.length > 0) {
+                    for (const conn of tag.connections) {
+                        relationships.push(`    ${tag.id} ||--o{ ${conn.id} : ${conn.label || 'has'}`);
+                    }
                 }
             }
         }
 
+        // Gera o Mermaid
         for (const [entityName, attrs] of entities) {
             mermaid += `    ${entityName} {\n`;
-            for (const attr of attrs) mermaid += `        string ${attr.replace(/\s+/g, '_')}\n`;
+            for (const attr of attrs) {
+                mermaid += `        string ${attr.replace(/\s+/g, '_')}\n`;
+            }
             mermaid += '    }\n';
         }
-        for (const rel of relationships) mermaid += rel + '\n';
+        
+        for (const rel of relationships) {
+            mermaid += rel + '\n';
+        }
 
         return mermaid;
     }

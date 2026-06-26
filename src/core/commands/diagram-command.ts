@@ -34,6 +34,34 @@ function extractCodeLine(document: vscode.TextDocument, tagLine: number): string
 }
 
 /**
+ * Extrai um bloco de código SQL completo (multilinhas) para diagramas ER
+ */
+function extractSQLBlock(document: vscode.TextDocument, tagLine: number): string | null {
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    
+    // Pula linhas de tag
+    let j = tagLine + 1;
+    while (j < lines.length && lines[j].match(/\/\/@/)) {
+        j++;
+    }
+    
+    if (j >= lines.length) return null;
+    
+    // Coleta linhas até encontrar ; ou outra tag //@
+    const codeLines: string[] = [];
+    while (j < lines.length) {
+        const line = lines[j];
+        if (line.match(/\/\/@/)) break;
+        codeLines.push(line);
+        if (line.includes(';')) break;
+        j++;
+    }
+    
+    return codeLines.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Processa nós retro (//@ID): filtra por prefixo, extrai código, formata label.
  */
 function processRetroPointers(
@@ -244,17 +272,28 @@ function filterAndSortNodes(
  * Pipeline completo: filtra nós → separa tipos → processa retro → processa forward → filtra, ordena e retorna.
  * Retorna TODAS as tags do documento (não filtra por prefixo).
  */
-function findRelatedTags(document: vscode.TextDocument, _prefix: string): ProcessedNode[] {
+function findRelatedTags(document: vscode.TextDocument, prefix: string, diagramType: string): ProcessedNode[] {
     const allNodes = filterAllNodes(document);
     const { retroPointers, forwardPointers } = splitNodes(allNodes);
+    
+    // Verifica se é diagrama ER
+    const isERDiagram = diagramType.toLowerCase().startsWith('erdiagram');
 
     // Processa TODOS os retro pointers (sem filtro de prefixo)
     const processedRetro = retroPointers.map(node => {
         // Grupos (IDs sem números) usam o ID diretamente, sem formatação
         const isGroup = !/\d/.test(node.id);
-        const codeLine = extractCodeLine(document, node.line);
-        const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
-        const label = isGroup ? node.id : (identifier ? formatCodeToLabel(identifier) : node.id);
+        
+        // Para diagramas ER, extrai bloco SQL completo
+        let label: string;
+        if (isERDiagram && isGroup) {
+            const sqlBlock = extractSQLBlock(document, node.line);
+            label = sqlBlock || node.id;
+        } else {
+            const codeLine = extractCodeLine(document, node.line);
+            const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
+            label = isGroup ? node.id : (identifier ? formatCodeToLabel(identifier) : node.id);
+        }
 
         return {
             line: node.line,
@@ -265,7 +304,7 @@ function findRelatedTags(document: vscode.TextDocument, _prefix: string): Proces
     });
 
     // Processa TODOS os forward pointers
-    const { syntheticNodes, extraConnections } = processForwardPointers(document, forwardPointers, processedRetro, _prefix);
+    const { syntheticNodes, extraConnections } = processForwardPointers(document, forwardPointers, processedRetro, prefix);
 
     // Inclui conexões diretas (//@Source->Target) como tags para manter a ordem
     const directConnectionTags: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string }> }> = [];
@@ -317,7 +356,7 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     }
 
     // Step 4: Find related tags
-    const relatedTags = findRelatedTags(context.document, context.prefix);
+    const relatedTags = findRelatedTags(context.document, context.prefix, diagramType);
 
     // Step 5: Generate diagram with saved diagram type
     const mermaidCode = generateMermaidDiagram(relatedTags, diagramType);
