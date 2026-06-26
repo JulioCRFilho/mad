@@ -10,7 +10,7 @@ function showLoginPage() {
 function showDashboard() {
   //@LoggedIn1:Load user data
   loadUserData();
-  //@LoggedIn1.1:Render dashboard
+  //@LoggedIn2:Render dashboard
   renderDashboard();
 }
 
@@ -18,7 +18,7 @@ function showDashboard() {
 function handleSessionExpired() {
   //@SessionExpired1:Clear session
   clearSession();
-  //@SessionExpired1.1:Redirect to login
+  //@SessionExpired2:Redirect to login
   redirectToLogin();
 }
 
