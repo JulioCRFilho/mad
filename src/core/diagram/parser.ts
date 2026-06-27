@@ -5,6 +5,8 @@ export interface NodeInfo {
     id: string;
     description: string | null;
     isArrow: boolean;
+    /** Tipo de seta para classDiagram: '-->' (assoc), '--' (dep), '<|--' (herança), '*--' (composição), 'o--' (agregação) */
+    arrowPrefix?: string;
 }
 
 export interface ProcessedNode {
@@ -12,7 +14,7 @@ export interface ProcessedNode {
     id: string;
     label: string;
     description: string | null;
-    connections: Array<{ id: string; label: string }>;
+    connections: Array<{ id: string; label: string; arrowPrefix?: string }>;
 }
 
 /**
@@ -39,6 +41,19 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
+        // Verifica //@--Target, //@<|--Target, //@*--Target, //@o--Target (classDiagram relationships)
+        const classArrowMatch = line.match(/\/\/@(<\|--|--|\*--|o--)([\w.]+)(?::([^\n]+))?/);
+        if (classArrowMatch) {
+            allNodes.push({
+                line: i,
+                id: classArrowMatch[2],
+                description: classArrowMatch[3] ? classArrowMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: classArrowMatch[1]
+            });
+            continue;
+        }
+
         // Verifica //@->Target:comentário (forward pointer explícito)
         // Ex: //@->Server:HTTP Request
         const arrowExplicitMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
@@ -47,7 +62,8 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
                 line: i,
                 id: arrowExplicitMatch[1],
                 description: arrowExplicitMatch[2] ? arrowExplicitMatch[2].trim() : null,
-                isArrow: true
+                isArrow: true,
+                arrowPrefix: '-->'
             });
             continue;
         }
@@ -87,17 +103,18 @@ export function splitNodes(
     allNodes: NodeInfo[]
 ): {
     retroPointers: Array<{ line: number; id: string; description: string | null }>;
-    forwardPointers: Array<{ line: number; id: string; description: string | null }>;
+    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }>;
 } {
     const retroPointers: Array<{ line: number; id: string; description: string | null }> = [];
-    const forwardPointers: Array<{ line: number; id: string; description: string | null }> = [];
+    const forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
 
     for (const node of allNodes) {
         if (node.isArrow) {
             forwardPointers.push({
                 line: node.line,
                 id: node.id,
-                description: node.description
+                description: node.description,
+                arrowPrefix: node.arrowPrefix
             });
         } else {
             retroPointers.push({

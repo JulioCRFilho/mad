@@ -25,7 +25,8 @@ export const classGenerator: DiagramGenerator = {
 
             if (tag.connections && tag.connections.length > 0) {
                 for (const conn of tag.connections) {
-                    relationships.push(`${tag.id.match(/^([a-zA-Z_]+)/)?.[1] || tag.id} --> ${conn.id}`);
+                    const arrow = conn.arrowPrefix || '-->';
+                    relationships.push(`${tag.id.match(/^([a-zA-Z_]+)/)?.[1] || tag.id} ${arrow} ${conn.id}`);
                 }
             }
         }

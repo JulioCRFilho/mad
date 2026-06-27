@@ -45,6 +45,7 @@ class User:
 
 //@Customer
 class Customer(User):
+    //@<|--User:inherits
     //@Customer1:__init__ method
     def __init__(self, name: str, email: str, phone: str, loyalty_tier: str = "bronze"):
         super().__init__(name, email, phone)
@@ -65,6 +66,7 @@ class Customer(User):
 
 //@Admin
 class Admin(User):
+    //@<|--User:inherits
     //@Admin1:__init__ method
     def __init__(self, name: str, email: str, phone: str, admin_level: int):
         super().__init__(name, email, phone)
