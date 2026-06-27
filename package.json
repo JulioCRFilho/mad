@@ -43,5 +43,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/JulioCRFilho/mddd-extension.git"
-  }
+  },
+  "icon": "assets/icon.png"
 }
