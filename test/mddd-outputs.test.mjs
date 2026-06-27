@@ -221,7 +221,7 @@ describe('05 – ER (05-er-database.sql)', () => {
   it('contém os 3 relacionamentos', () => {
     assert.ok(out.includes('User ||--o{ Order : places'));
     assert.ok(out.includes('Order ||--o{ OrderItem : contains'));
-    assert.ok(out.includes('OrderItem ||--o{ Product : references'));
+    assert.ok(out.includes('Product ||--o{ OrderItem : references'));
   });
 
   it('snapshot completo', (t) => {

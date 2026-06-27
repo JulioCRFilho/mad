@@ -33,7 +33,8 @@ function extractCreateTableAttributes(code: string): string[] {
     
     for (const line of lines) {
         // Ignora linhas que são constraints (PRIMARY KEY, FOREIGN KEY, etc.)
-        if (/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT|INDEX|KEY)/i.test(line)) {
+        // Inclui FULLTEXT que é um tipo de índice, não coluna
+        if (/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT|INDEX|KEY|FULLTEXT)/i.test(line)) {
             continue;
         }
         
@@ -84,7 +85,30 @@ export const erGenerator: DiagramGenerator = {
             // Processa apenas nós que têm conexões (ignora tags com -> no ID, que são tratadas como connections)
             if (!tag.id.includes('->') && tag.connections && tag.connections.length > 0) {
                 for (const conn of tag.connections) {
-                    relationships.push(`    ${tag.id} ||--o{ ${conn.id} : ${conn.label || 'has'}`);
+                    const label = conn.label || 'has';
+                    // Labels com espaços ou caracteres especiais (/, etc.) precisam de aspas no Mermaid
+                    const needsQuotes = /[\s\/\\,:;!@#$%^&*()+=]/.test(label);
+                    const formattedLabel = needsQuotes ? `"${label}"` : label;
+
+                    // Inferir cardinalidade a partir do label
+                    // "has one", "billing", "shipping" = one-to-one (||--||)
+                    // demais casos = one-to-many (||--o{)
+                    let leftSide = tag.id;
+                    let rightSide = conn.id;
+                    let cardinality = '||--o{';
+
+                    if (/^(has.one|billing|shipping)$/i.test(label.trim())) {
+                        cardinality = '||--||';
+                    }
+
+                    // "references" indica relação child->parent (FK do child aponta pro parent)
+                    // Invertemos a direção para mostrar parent->children no diagrama
+                    if (/^references$/i.test(label.trim())) {
+                        leftSide = conn.id;
+                        rightSide = tag.id;
+                    }
+
+                    relationships.push(`    ${leftSide} ${cardinality} ${rightSide} : ${formattedLabel}`);
                 }
             }
         }
