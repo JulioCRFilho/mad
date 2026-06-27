@@ -33,7 +33,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && NODE_PATH=test/mocks node --test test/mddd-outputs.test.mjs"
+    "test": "npm run compile && NODE_PATH=test/mocks node --test test/mad-outputs.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",
@@ -42,7 +42,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/JulioCRFilho/mddd-extension.git"
+    "url": "https://github.com/JulioCRFilho/mad.git"
   },
   "icon": "assets/icon.png",
   "publisher": "TheTod",
@@ -52,7 +52,7 @@
     "diagram",
     "documentation",
     "autodoc",
-    "mddd",
+    "mad",
     "sdd"
   ]
 }

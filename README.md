@@ -1,6 +1,6 @@
-# MDDD Extension
+# MAD
 
-<p align="center"><img src="assets/icon.png" width="128" alt="MDDD icon"></p>
+<p align="center"><img src="assets/icon.png" width="128" alt="MAD icon"></p>
 
 VS Code extension that renders Mermaid diagrams from `//@` tags embedded in code comments.
 
@@ -48,13 +48,13 @@ class LoginController {
 
 ```bash
 npm run compile
-NODE_PATH=test/mocks node --test test/mddd-outputs.test.mjs
+NODE_PATH=test/mocks node --test test/mad-outputs.test.mjs
 ```
 
 Update snapshots after changes:
 
 ```bash
-NODE_PATH=test/mocks node --test-update-snapshots --test test/mddd-outputs.test.mjs
+NODE_PATH=test/mocks node --test-update-snapshots --test test/mad-outputs.test.mjs
 ```
 
 ## MAD skill

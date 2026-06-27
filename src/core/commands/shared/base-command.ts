@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import { readDiagramType, ProcessedNode } from '../../diagram/parser';
 import { generateMermaidDiagram } from '../../diagram/generator';
-import { MDDDDiagramPanel } from '../../ui/diagram-panel';
+import { MADDiagramPanel } from '../../ui/diagram-panel';
 import { DiagramCommandContext, DiagramResult, DiagramCommandHandler } from './types';
 import { findRelatedTags } from './helpers';
-import { validateMDDDStructure, validateMermaidForType } from './validation';
+import { validateMADStructure, validateMermaidForType } from './validation';
 
 /**
  * Classe base abstrata para todos os comandos de diagrama.
- * Implementa o pipeline comum: validação MDDD → processamento de tags → geração Mermaid → validação Mermaid → exibição.
+ * Implementa o pipeline comum: validação MAD → processamento de tags → geração Mermaid → validação Mermaid → exibição.
  * Cada tipo de diagrama precisa apenas implementar `matches()` e pode sobrescrever métodos para comportamento específico.
  */
 export abstract class BaseDiagramCommand implements DiagramCommandHandler {
@@ -23,10 +23,10 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
     }
 
     /**
-     * Valida a estrutura MDDD do diagrama (regras de hierarquia, referências, etc.)
+     * Valida a estrutura MAD do diagrama (regras de hierarquia, referências, etc.)
      */
-    protected validateMDDD(document: vscode.TextDocument, prefix: string): { valid: boolean; error?: string } {
-        const result = validateMDDDStructure(document, prefix);
+    protected validateMAD(document: vscode.TextDocument, prefix: string): { valid: boolean; error?: string } {
+        const result = validateMADStructure(document, prefix);
         if (!result.valid) {
             const errorMessages = result.errors.map(e =>
                 `Linha ${e.line + 1}: ${e.message}`
@@ -63,11 +63,11 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
      * Exibe o diagrama no painel webview
      */
     protected displayDiagram(extensionUri: vscode.Uri, mermaidCode: string): void {
-        MDDDDiagramPanel.createOrShow(extensionUri, mermaidCode);
+        MADDiagramPanel.createOrShow(extensionUri, mermaidCode);
     }
 
     /**
-     * Hook executado antes da validação MDDD.
+     * Hook executado antes da validação MAD.
      * Pode ser usado para pré-processamento específico do tipo de diagrama.
      */
     protected beforeValidation(_document: vscode.TextDocument, _prefix: string): void {
@@ -96,8 +96,8 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
         // Step 1.5: Pre-validation hook
         this.beforeValidation(document, prefix);
 
-        // Step 2: Validate MDDD structure
-        const validation = this.validateMDDD(document, prefix);
+        // Step 2: Validate MAD structure
+        const validation = this.validateMAD(document, prefix);
         if (!validation.valid) {
             return { success: false, errorMessage: validation.error };
         }

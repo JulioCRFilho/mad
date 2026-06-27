@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
-export class MDDDDiagramPanel {
-    public static currentPanel: MDDDDiagramPanel | undefined;
-    public static readonly viewType = 'mddd.diagram';
+export class MADDiagramPanel {
+    public static currentPanel: MADDiagramPanel | undefined;
+    public static readonly viewType = 'mad.diagram';
 
     private readonly _panel: vscode.WebviewPanel;
     private _disposables: vscode.Disposable[] = [];
@@ -13,14 +13,14 @@ export class MDDDDiagramPanel {
 
         const besideColumn = currentColumn + 1;
 
-        if (MDDDDiagramPanel.currentPanel) {
-            MDDDDiagramPanel.currentPanel._panel.reveal(besideColumn);
-            MDDDDiagramPanel.currentPanel._update(mermaidCode);
+        if (MADDiagramPanel.currentPanel) {
+            MADDiagramPanel.currentPanel._panel.reveal(besideColumn);
+            MADDiagramPanel.currentPanel._update(mermaidCode);
             return;
         }
 
         const panel = vscode.window.createWebviewPanel(
-            MDDDDiagramPanel.viewType,
+            MADDiagramPanel.viewType,
             'Diagrama Mermaid',
             besideColumn,
             {
@@ -29,7 +29,7 @@ export class MDDDDiagramPanel {
             }
         );
 
-        MDDDDiagramPanel.currentPanel = new MDDDDiagramPanel(panel, extensionUri, mermaidCode);
+        MADDiagramPanel.currentPanel = new MADDiagramPanel(panel, extensionUri, mermaidCode);
     }
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, mermaidCode: string) {
@@ -356,7 +356,7 @@ export class MDDDDiagramPanel {
     }
 
     public dispose() {
-        MDDDDiagramPanel.currentPanel = undefined;
+        MADDiagramPanel.currentPanel = undefined;
         this._panel.dispose();
         while (this._disposables.length) {
             const disposable = this._disposables.pop();

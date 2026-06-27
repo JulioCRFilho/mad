@@ -5,7 +5,7 @@ import { filterAllNodes } from '../diagram/parser';
  * HoverProvider que exibe informações detalhadas sobre tags //@ ao passar o mouse.
  * Mostra o ID, label formatado e preview de código abaixo da tag.
  */
-export class MDDDHoverProvider implements vscode.HoverProvider {
+export class MADHoverProvider implements vscode.HoverProvider {
     provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.Hover> {
         const lineText = document.lineAt(position.line).text;
 
@@ -38,7 +38,7 @@ export class MDDDHoverProvider implements vscode.HoverProvider {
         const markdownParts: string[] = [];
 
         // Título
-        markdownParts.push(`**🔖 MDDD Tag**`);
+        markdownParts.push(`**🔖 MAD Tag**`);
 
         // Tipo da tag
         const tagType = isArrow ? '➡️ Forward Pointer' :

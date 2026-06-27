@@ -2,7 +2,7 @@
  * Testes de output dos diagramas — usa node:test nativo (zero dependências).
  *
  * Compila o projeto com `npm run compile`, depois roda:
- *   node --test test/mddd-outputs.test.mjs
+ *   node --test test/mad-outputs.test.mjs
  */
 import { describe, it, before } from 'node:test';
 import { strict as assert } from 'node:assert';

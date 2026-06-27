@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
  * FoldingRangeProvider que cria regiões de folding para cada tag //@ consecutiva.
  * Permite ao usuário esconder/expandir blocos de tags com 1 clique.
  */
-export class MDDDFoldingProvider implements vscode.FoldingRangeProvider {
+export class MADFoldingProvider implements vscode.FoldingRangeProvider {
     provideFoldingRanges(
         document: vscode.TextDocument,
         _context: vscode.FoldingContext,

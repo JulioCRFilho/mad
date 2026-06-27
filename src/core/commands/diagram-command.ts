@@ -13,7 +13,7 @@
  *     shared/
  *       types.ts            ← Interfaces e tipos compartilhados
  *       helpers.ts          ← Funções auxiliares (processRetroPointers, processForwardPointers, etc.)
- *       validation.ts       ← Validação MDDD e Mermaid por tipo
+ *       validation.ts       ← Validação MAD e Mermaid por tipo
  *       base-command.ts     ← Classe abstrata base para todos os handlers
  *
  * A função validateAndDisplayDiagram() agora é um dispatcher que

@@ -4,9 +4,9 @@ import { validateDiagram, ValidationResult } from '../../diagram/validator';
 export type { ValidationResult } from '../../diagram/validator';
 
 /**
- * Valida a estrutura MDDD do diagrama
+ * Valida a estrutura MAD do diagrama
  */
-export function validateMDDDStructure(document: import('vscode').TextDocument, prefix: string): ValidationResult {
+export function validateMADStructure(document: import('vscode').TextDocument, prefix: string): ValidationResult {
     const allNodes = filterAllNodes(document);
     return validateDiagram(allNodes, prefix);
 }

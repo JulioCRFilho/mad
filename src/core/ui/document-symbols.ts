@@ -5,7 +5,7 @@ import { filterAllNodes, NodeInfo } from '../diagram/parser';
  * DocumentSymbolProvider que indexa as tags //@ e as exibe no outline do VS Code.
  * Organiza em árvore: Grupos → Entry Nodes → Sequence Nodes
  */
-export class MDDDDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
+export class MADDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     provideDocumentSymbols(
         document: vscode.TextDocument
     ): vscode.ProviderResult<vscode.SymbolInformation[] | vscode.DocumentSymbol[]> {

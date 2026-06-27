@@ -1,18 +1,18 @@
 import * as vscode from 'vscode';
-import { MDDDDecorationManager } from './src/core/ui/decoration-manager';
+import { MADDecorationManager } from './src/core/ui/decoration-manager';
 import { validateAndDisplayDiagram, DiagramCommandContext } from './src/core/commands/diagram-command';
-import { MDDDHoverProvider } from './src/core/ui/hover-provider';
-import { MDDDDocumentSymbolProvider } from './src/core/ui/document-symbols';
-import { MDDDFoldingProvider } from './src/core/ui/folding-provider';
+import { MADHoverProvider } from './src/core/ui/hover-provider';
+import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
+import { MADFoldingProvider } from './src/core/ui/folding-provider';
 import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('MDDD Extension está ativa');
+    console.log('MAD está ativa');
 
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
 
     // ── Decoration Manager (ícone na gutter) ──
-    const decorationManager = new MDDDDecorationManager(iconPath);
+    const decorationManager = new MADDecorationManager(iconPath);
     context.subscriptions.push(decorationManager);
 
     const updateDecorations = (editor: vscode.TextEditor) => {
@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Comando: Abrir diagrama ──
     const showDiagramCommand = vscode.commands.registerCommand(
-        'mddd.showDiagram',
+        'mad.showDiagram',
         (lineNumber: number) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Comando: Navegar para linha específica ──
     const goToLineCommand = vscode.commands.registerCommand(
-        'mddd.goToLine',
+        'mad.goToLine',
         (lineNumber: number) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -67,20 +67,20 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Comando: Abrir diagrama do prefixo sob o cursor ──
     const showDiagramAtCursorCommand = vscode.commands.registerCommand(
-        'mddd.showDiagramAtCursor',
+        'mad.showDiagramAtCursor',
         () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
 
             const lineNumber = editor.selection.active.line;
-            vscode.commands.executeCommand('mddd.showDiagram', lineNumber);
+            vscode.commands.executeCommand('mad.showDiagram', lineNumber);
         }
     );
     context.subscriptions.push(showDiagramAtCursorCommand);
 
     // ── Comando: Mostrar estatísticas do diagrama ──
     const showStatsCommand = vscode.commands.registerCommand(
-        'mddd.showStats',
+        'mad.showStats',
         () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -96,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
             const sequences = declared.filter((n: { id: string }) => /\.[0-9]+/.test(n.id));
 
             const msg = [
-                `**📊 MDDD Stats**`,
+                `**📊 MAD Stats**`,
                 ``,
                 `**Tipo:** \`${diagramType}\``,
                 `**Total de tags:** ${allNodes.length}`,
@@ -133,7 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
             { language: 'c' },
             { language: 'sql' }
         ],
-        new MDDDHoverProvider()
+        new MADHoverProvider()
     );
     context.subscriptions.push(hoverProvider);
 
@@ -158,13 +158,13 @@ export function activate(context: vscode.ExtensionContext) {
                 { language: 'c' },
                 { language: 'sql' }
             ],
-            new MDDDFoldingProvider()
+            new MADFoldingProvider()
         )
     );
 
     // ── Comando: Colapsar todas as tags ──
     const foldAllTagsCommand = vscode.commands.registerCommand(
-        'mddd.foldAllTags',
+        'mad.foldAllTags',
         () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -175,7 +175,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Comando: Expandir todas as tags ──
     const unfoldAllTagsCommand = vscode.commands.registerCommand(
-        'mddd.unfoldAllTags',
+        'mad.unfoldAllTags',
         () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -244,7 +244,7 @@ export function activate(context: vscode.ExtensionContext) {
                 { language: 'c' },
                 { language: 'sql' }
             ],
-            new MDDDDocumentSymbolProvider()
+            new MADDocumentSymbolProvider()
         )
     );
 
@@ -266,7 +266,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const lineText = editor.document.lineAt(currentLine).text;
         if (lineText.match(/\/\/@([\w.]+)/)) {
-            vscode.commands.executeCommand('mddd.showDiagram', currentLine);
+            vscode.commands.executeCommand('mad.showDiagram', currentLine);
         }
     });
     context.subscriptions.push(clickDetection);
@@ -288,5 +288,5 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    console.log('MDDD Extension foi desativada');
+    console.log('MAD foi desativada');
 }

@@ -1,4 +1,4 @@
-name: MDDD Tests
+name: MAD Tests
 
 on:
   push:

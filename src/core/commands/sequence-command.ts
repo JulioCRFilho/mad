@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BaseDiagramCommand } from './shared/base-command';
-import { MDDDDiagramPanel } from '../ui/diagram-panel';
+import { MADDiagramPanel } from '../ui/diagram-panel';
 import { DiagramCommandContext, DiagramResult } from './shared/types';
 import { findRelatedTagsWithOrder } from './shared/helpers';
 import { readDiagramType } from '../diagram/parser';
@@ -113,8 +113,8 @@ export class SequenceCommand extends BaseDiagramCommand {
 
         const diagramType = this.readDiagramType(document);
 
-        // Validação MDDD
-        const validation = this.validateMDDD(document, prefix);
+        // Validação MAD
+        const validation = this.validateMAD(document, prefix);
         if (!validation.valid) {
             return { success: false, errorMessage: validation.error };
         }

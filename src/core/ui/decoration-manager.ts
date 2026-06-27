@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
  */
 
 // Regex para detectar linhas com //@ (qualquer linha que comece com //@)
-export class MDDDDecorationManager {
+export class MADDecorationManager {
     private decorationType: vscode.TextEditorDecorationType;
 
     constructor(iconPath: string) {
