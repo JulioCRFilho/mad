@@ -173,13 +173,13 @@ describe('04 – State (04-state-machine-login.js)', () => {
       assert.ok(out.includes(s), `estado ${s}`);
   });
 
-  it('contém ações dentro dos estados', () => {
+  it('contém ações dentro dos estados (usa description do @comment)', () => {
     const actions = [
-      'DisplayLoginForm: Display Login Form',
-      'ValidateCredentials: Validate Credentials',
-      'SendCode: Send Code',
-      'StartTokenRefreshTimer: Start Token Refresh Timer',
-      'RedirectToLogin: Redirect To Login',
+      'DisplayLoginForm: Exibir formulario de login',
+      'ValidateCredentials: Validar credenciais',
+      'SendCode: Enviar codigo',
+      'StartTokenRefreshTimer: Iniciar refresh automatico do token',
+      'RedirectToLogin: Redirecionar para login',
     ];
     for (const a of actions) assert.ok(out.includes(a), `ação ${a}`);
   });

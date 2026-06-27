@@ -30,7 +30,8 @@ export const stateGenerator: DiagramGenerator = {
                 if (states.has(groupId)) {
                     // Formata o label da ação: "Display login form" → "DisplayLoginForm"
                     const actionId = tag.label.replace(/\s+/g, '');
-                    states.get(groupId)!.push(`${actionId}: ${tag.label}`);
+                    const displayLabel = tag.description || tag.label;
+                    states.get(groupId)!.push(`${actionId}: ${displayLabel}`);
                 }
             }
         }
