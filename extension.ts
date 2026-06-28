@@ -11,6 +11,42 @@ export function activate(context: vscode.ExtensionContext) {
 
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
 
+    // ── Auto-configure formatter when files with MAD tags are opened ──
+    const configureFormatterForFile = (document: vscode.TextDocument) => {
+        const text = document.getText();
+        const hasMADTags = text.includes('//@') || text.includes('// @');
+
+        if (!hasMADTags) return;
+
+        const config = vscode.workspace.getConfiguration('editor');
+        const formatOnSave = config.get<boolean>('formatOnSave', false);
+
+        // Show warning if formatOnSave is enabled
+        const showWarning = vscode.workspace.getConfiguration('mad').get<boolean>('showFormatWarning', true);
+        if (showWarning && formatOnSave) {
+            vscode.window.showWarningMessage(
+                '⚠️ O auto-formatter está ativado (formatOnSave) e pode quebrar as tags MAD. ' +
+                'Use o comando "MAD: Configurar Auto-Formatter" para desabilitá-lo automaticamente.',
+                'Configurar Agora'
+            ).then(selection => {
+                if (selection === 'Configurar Agora') {
+                    vscode.commands.executeCommand('mad.configureFormatter');
+                }
+            });
+        }
+    };
+
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(document => {
+            configureFormatterForFile(document);
+        })
+    );
+
+    // Configure for active editor on activation
+    if (vscode.window.activeTextEditor) {
+        configureFormatterForFile(vscode.window.activeTextEditor.document);
+    }
+
     // ── Decoration Manager (gutter icon) ──
     const decorationManager = new MADDecorationManager(iconPath);
     context.subscriptions.push(decorationManager);
@@ -19,6 +55,32 @@ export function activate(context: vscode.ExtensionContext) {
         const decorations = decorationManager.provideDecorations(editor.document);
         decorationManager.apply(editor, decorations);
     };
+
+    // ── Command: Configure formatter (disable formatOnSave) ──
+    const configureFormatterCommand = vscode.commands.registerCommand(
+        'mad.configureFormatter',
+        async () => {
+            const config = vscode.workspace.getConfiguration('editor');
+            const currentFormatOnSave = config.get<boolean>('formatOnSave', false);
+
+            if (!currentFormatOnSave) {
+                vscode.window.showInformationMessage('✅ formatOnSave já está desabilitado. Nenhuma ação necessária.');
+                return;
+            }
+
+            const choice = await vscode.window.showWarningMessage(
+                'Isso irá desabilitar o formatOnSave no seu workspace para evitar que o auto-formatter quebre as tags MAD. Continuar?',
+                'Sim, desabilitar',
+                'Cancelar'
+            );
+
+            if (choice === 'Sim, desabilitar') {
+                await config.update('formatOnSave', false, vscode.ConfigurationTarget.Workspace);
+                vscode.window.showInformationMessage('✅ formatOnSave desabilitado com sucesso! Suas tags MAD estão protegidas.');
+            }
+        }
+    );
+    context.subscriptions.push(configureFormatterCommand);
 
     // ── Command: Open diagram ──
     const showDiagramCommand = vscode.commands.registerCommand(
@@ -193,7 +255,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(document => {
             const text = document.getText();
-            if (!text.includes('//@')) return;
+            if (!text.includes('//@') && !text.includes('// @')) return;
 
             const fileKey = document.uri.toString();
             const cooldownUntil = unfoldCooldowns.get(fileKey);
@@ -265,7 +327,7 @@ export function activate(context: vscode.ExtensionContext) {
         updateDecorations(editor);
 
         const lineText = editor.document.lineAt(currentLine).text;
-        if (lineText.match(/\/\/@([\w.]+)/)) {
+        if (lineText.match(/\/\/\s?@([\w.]+)/)) {
             vscode.commands.executeCommand('mad.showDiagram', currentLine);
         }
     });
