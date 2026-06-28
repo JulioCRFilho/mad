@@ -6,6 +6,10 @@ import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
 import { MADFoldingProvider } from './src/core/ui/folding-provider';
 import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
 
+function isMarkdownDocument(document: vscode.TextDocument): boolean {
+    return document.languageId === 'markdown';
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('MAD is active');
 
@@ -13,6 +17,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Auto-configure formatter when files with MAD tags are opened ──
     const configureFormatterForFile = (document: vscode.TextDocument) => {
+        if (isMarkdownDocument(document)) return;
+
         const text = document.getText();
         const hasMADTags = text.includes('//@') || text.includes('// @');
 
@@ -254,6 +260,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(document => {
+            if (isMarkdownDocument(document)) return;
+
             const text = document.getText();
             if (!text.includes('//@') && !text.includes('// @')) return;
 
@@ -315,6 +323,7 @@ export function activate(context: vscode.ExtensionContext) {
     const clickDetection = vscode.window.onDidChangeTextEditorSelection(event => {
         const editor = event.textEditor;
         if (!editor) return;
+        if (isMarkdownDocument(editor.document)) return;
 
         const selection = editor.selection;
         if (!selection.isEmpty) return;
@@ -335,12 +344,16 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Change listeners ──
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor) updateDecorations(editor);
+        if (!editor) return;
+        if (isMarkdownDocument(editor.document)) return;
+        updateDecorations(editor);
     }));
 
     context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && event.document === editor.document) updateDecorations(editor);
+        if (!editor) return;
+        if (isMarkdownDocument(editor.document)) return;
+        if (event.document === editor.document) updateDecorations(editor);
     }));
 
     // ── Update initial decorations ──

@@ -18,16 +18,22 @@ export interface ProcessedNode {
 }
 
 /**
- * Reads the diagram type from the first line of the file.
+ * Reads the diagram type from the file.
  * Expected format: //@::DiagramType
  * Example: //@::flowchart TD
+ * Searches subsequent lines if not found on the first line.
  * Returns "flowchart TD" as fallback if not found.
  */
 export function readDiagramType(document: vscode.TextDocument): string {
     const text = document.getText();
-    const firstLine = text.split(/\r?\n/)[0] || '';
-    const match = firstLine.match(/\/\/@::(.+)/);
-    return match ? match[1].trim() : 'flowchart TD';
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+        const match = line.match(/\/\/@::(.+)/);
+        if (match) {
+            return match[1].trim();
+        }
+    }
+    return 'flowchart TD';
 }
 
 /**
