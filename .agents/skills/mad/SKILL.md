@@ -15,6 +15,7 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 2. **`//@` comments**: become nodes or connections in the diagram
 3. **`//` comments without `@`**: are ignored
 4. **Gutter icon**: every `//@` line receives a visual icon in the editor
+5. **Documentation must stay in code**: NEVER create separate documentation files (`.md`, `.txt`, etc.) outside the source code. All documentation must be embedded as `//@` comments within the code itself.
 
 ## Supported diagram types
 
