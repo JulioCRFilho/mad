@@ -62,13 +62,18 @@ export function formatCodeToLabel(code: string): string {
             // Found the word! Now break into more words based on the pattern
             let label = word;
             
-            if (camelCaseMatch) {
-                // camelCase: break at lowercase→uppercase transitions
-                label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
-            } else if (pascalCaseMatch) {
-                // PascalCase: break at uppercase→lowercase transitions
-                label = label.replace(/([A-Z])([a-z])/g, '$1 $2');
-            } else if (snakeCaseMatch) {
+    if (camelCaseMatch) {
+        // camelCase: break at lowercase→uppercase transitions
+        label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+    } else if (pascalCaseMatch) {
+        // PascalCase: break at transitions where:
+        // 1. lowercase followed by uppercase (e.g., "myVariable")
+        // 2. uppercase followed by uppercase+lowercase (e.g., "XMLParser")
+        // This correctly handles "SelfDeclaredLegal" → "Self Declared Legal"
+        // but NOT simple words like "Name" → "N Ame"
+        label = label.replace(/([a-z])([A-Z])/g, '$1 $2');
+        label = label.replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+    } else if (snakeCaseMatch) {
                 // snake_case: replace underscores with spaces
                 label = label.replace(/_/g, ' ');
             }
