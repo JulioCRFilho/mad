@@ -37,18 +37,29 @@ export function validateDiagram(
 
     const declaredIdSet = new Set(declaredIds.keys());
 
-    // 1. Verifica se todos os //@-> apontam para IDs existentes
+    // 1. Verifica se todos os //@-> apontam para IDs existentes E que são nós válidos (não arrows)
     for (const node of allNodes) {
         if (node.isArrow) {
-            // Skip direct connections (//@Source->Target) - they don\t need to be declared
+            // Skip direct connections (//@Source->Target) - they don't need to be declared
             if (node.id.includes('->')) continue;
             
+            // Verifica se o ID existe
             if (!declaredIdSet.has(node.id)) {
                 errors.push({
                     line: node.line,
                     message: `//@->${node.id} points to "${node.id}" which has not been declared. Create //@${node.id} first.`,
                     missingId: node.id
                 });
+            } else {
+                // Verifica se o ID apontado é um nó normal (não uma arrow/connection)
+                const targetNode = declaredIds.get(node.id);
+                if (targetNode && targetNode.isArrow) {
+                    errors.push({
+                        line: node.line,
+                        message: `//@->${node.id} points to "${node.id}" which is a connection/arrow, not a node. //@-> can only point to normal nodes (//@ID), not to other connections.`,
+                        missingId: node.id
+                    });
+                }
             }
         }
     }
