@@ -13,7 +13,7 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 
 1. **File's first line**: `//@::DiagramType` defines the diagram type.
 2. **`//@` comments**: become nodes or connections in the diagram.
-3. **`//` comments without `@`**: AVOID.
+3. **`//` comments without `@`**: Remove.
 4. **Documentation must stay in code**: NEVER create separate documentation files (`.md`, `.txt`, etc.) outside the source code. Tags are placed over the code they represent.
 
 ## Supported diagram types
