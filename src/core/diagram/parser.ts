@@ -19,7 +19,7 @@ export interface ProcessedNode {
 
 /**
  * Reads the diagram type from the file.
- * Expected format: //@::DiagramType
+ * Expected format: //@::DiagramType or // @::DiagramType
  * Example: //@::flowchart TD
  * Searches subsequent lines if not found on the first line.
  * Returns "flowchart TD" as fallback if not found.
@@ -28,7 +28,7 @@ export function readDiagramType(document: vscode.TextDocument): string {
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     for (const line of lines) {
-        const match = line.match(/\/\/@::(.+)/);
+        const match = line.match(/\/\/\s*@::(.+)/);
         if (match) {
             return match[1].trim();
         }
@@ -37,7 +37,7 @@ export function readDiagramType(document: vscode.TextDocument): string {
 }
 
 /**
- * Filters all //@ nodes from the document
+ * Filters all //@ or // @ nodes from the document
  */
 export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
     const allNodes: NodeInfo[] = [];
@@ -48,7 +48,7 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
         const line = lines[i];
 
         // Verifica //@--Target, //@<|--Target, //@*--Target, //@o--Target (classDiagram relationships)
-        const classArrowMatch = line.match(/\/\/@(<\|--|--|\*--|o--)([\w.]+)(?::([^\n]+))?/);
+        const classArrowMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--)([\w.]+)(?::([^\n]+))?/);
         if (classArrowMatch) {
             allNodes.push({
                 line: i,
@@ -62,7 +62,7 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
 
         // Checks //@->Target:comment (explicit forward pointer)
         // Ex: //@->Server:HTTP Request
-        const arrowExplicitMatch = line.match(/\/\/@->([\w.]+)(?::([^\n]+))?/);
+        const arrowExplicitMatch = line.match(/\/\/\s*@->([\w.]+)(?::([^\n]+))?/);
         if (arrowExplicitMatch) {
             allNodes.push({
                 line: i,
@@ -74,9 +74,22 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
             continue;
         }
 
+        // Checks //@Source-->Target:comment (inline forward pointer with -->)
+        // Ex: //@ManagingPartner-->PhoneNumber:contains
+        const arrowInlineDoubleMatch = line.match(/\/\/\s*@([\w.]+)-->([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineDoubleMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineDoubleMatch[1]}->${arrowInlineDoubleMatch[2]}`,
+                description: arrowInlineDoubleMatch[3] ? arrowInlineDoubleMatch[3].trim() : null,
+                isArrow: true
+            });
+            continue;
+        }
+
         // Checks //@Source->Target:comment (inline forward pointer)
         // Ex: //@Client->Server:HTTP Request
-        const arrowInlineMatch = line.match(/\/\/@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
+        const arrowInlineMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
         if (arrowInlineMatch) {
             allNodes.push({
                 line: i,
@@ -88,7 +101,7 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
         }
 
         // Checks //@ID:comment (retro pointer)
-        const tagMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
+        const tagMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
         if (tagMatch) {
             allNodes.push({
                 line: i,

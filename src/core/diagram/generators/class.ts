@@ -14,6 +14,19 @@ export const classGenerator: DiagramGenerator = {
         for (const tag of tags) {
             if (!/\d/.test(tag.id)) {
                 if (!classContents.has(tag.id)) classContents.set(tag.id, []);
+                
+                // Processa connections em grupos também
+                if (tag.connections && tag.connections.length > 0) {
+                    for (const conn of tag.connections) {
+                        const arrow = conn.arrowPrefix || '-->';
+                        const label = conn.label ? ` : ${conn.label}` : '';
+                        if (arrow === '<|--') {
+                            relationships.push(`${conn.id} ${arrow} ${tag.id}${label}`);
+                        } else {
+                            relationships.push(`${tag.id} ${arrow} ${conn.id}${label}`);
+                        }
+                    }
+                }
                 continue;
             }
 
