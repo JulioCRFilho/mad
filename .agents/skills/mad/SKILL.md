@@ -433,6 +433,7 @@ Step 4: Define CONNECTIONS between nodes
     //@->Auth1:Authenticate       (inside method)
     //@Entry->Auth:Main flow      (at file level)
 
+**IMPORTANT:** the tmp file is created after modifying and saving the source code.
 Step 5: VALIDATE (see validation flow below)
     cat /tmp/mad-diagram.mermaid
 ```
