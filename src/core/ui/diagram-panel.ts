@@ -14,7 +14,8 @@ export class MADDiagramPanel {
         const besideColumn = currentColumn + 1;
 
         if (MADDiagramPanel.currentPanel) {
-            MADDiagramPanel.currentPanel._panel.reveal(besideColumn);
+            // Se já está aberto, NÃO reabre nem revela
+            // Apenas atualiza o conteúdo silenciosamente
             MADDiagramPanel.currentPanel._update(mermaidCode);
             return;
         }

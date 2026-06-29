@@ -355,17 +355,24 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // ── Click detection to open diagram (with throttling) ──
+    // ── Click detection to open diagram (apenas clique exato na tag) ──
     let lastClickLine = -1;
     let lastClickTime = 0;
     const CLICK_THROTTLE_MS = 300;
+    
     const clickDetection = vscode.window.onDidChangeTextEditorSelection(event => {
         const editor = event.textEditor;
         if (!editor) return;
         if (isMarkdownDocument(editor.document)) return;
 
+        // Early return: se o preview já está aberto, não faz nada
+        if (MADDiagramPanel.currentPanel) {
+            return;
+        }
+
         const selection = editor.selection;
-        if (!selection.isEmpty) return;
+        // Só processa se for seleção de linha única (não range)
+        if (!selection.isEmpty || selection.start.line !== selection.end.line) return;
 
         const currentLine = selection.active.line;
         const now = Date.now();
@@ -374,15 +381,25 @@ export async function activate(context: vscode.ExtensionContext) {
         if (currentLine === lastClickLine && now - lastClickTime < CLICK_THROTTLE_MS) {
             return;
         }
+        
+        // Verifica se o cursor está EXATAMENTE em cima da tag
+        const lineText = editor.document.lineAt(currentLine).text;
+        const tagMatch = lineText.match(/\/\/\s?@([\w.]+)/);
+        if (!tagMatch) return;
+        
+        // Verifica se a posição do cursor está dentro do range da tag
+        const tagStart = lineText.indexOf(tagMatch[0]);
+        const tagEnd = tagStart + tagMatch[0].length;
+        const cursorPos = selection.active.character;
+        
+        // Só abre se o cursor estiver DENTRO da tag (não antes nem depois)
+        if (cursorPos < tagStart || cursorPos > tagEnd) return;
+        
         lastClickLine = currentLine;
         lastClickTime = now;
 
         updateDecorations(editor);
-
-        const lineText = editor.document.lineAt(currentLine).text;
-        if (lineText.match(/\/\/\s?@([\w.]+)/)) {
-            vscode.commands.executeCommand('mad.showDiagram', currentLine);
-        }
+        vscode.commands.executeCommand('mad.showDiagram', currentLine);
     });
     context.subscriptions.push(clickDetection);
 
