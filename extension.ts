@@ -18,37 +18,26 @@ export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('MAD - Mermaid Auto-Doccing');
     context.subscriptions.push(outputChannel);
     
-    // Função helper para logging
+    // Função helper para logging (produção: limpo e essencial)
     const log = {
         info: (msg: string) => {
-            const timestamp = new Date().toISOString();
-            const formatted = `[${timestamp}] ${msg}`;
-            console.log(formatted);
-            outputChannel.appendLine(formatted);
-            outputChannel.show(); // Mostra o output channel automaticamente
+            const timestamp = new Date().toISOString().split('T')[0]; // Apenas data
+            console.log(`[MAD ${timestamp}] ${msg}`);
+            outputChannel.appendLine(`[${timestamp}] ${msg}`);
         },
         error: (msg: string) => {
-            const timestamp = new Date().toISOString();
-            const formatted = `[${timestamp}] ERROR: ${msg}`;
-            console.error(formatted);
-            outputChannel.appendLine(formatted);
-            outputChannel.show();
+            console.error(`[MAD ERROR] ${msg}`);
+            outputChannel.appendLine(`ERROR: ${msg}`);
+            outputChannel.show(); // Mostra automaticamente apenas em erros
         },
         warn: (msg: string) => {
-            const timestamp = new Date().toISOString();
-            const formatted = `[${timestamp}] WARN: ${msg}`;
-            console.warn(formatted);
-            outputChannel.appendLine(formatted);
-            outputChannel.show();
+            console.warn(`[MAD WARN] ${msg}`);
+            outputChannel.appendLine(`WARN: ${msg}`);
         }
     };
     
-    // Log de ativação
-    log.info('========================================');
-    log.info('MAD: Extensão ativada com sucesso!');
-    log.info('MAD: Logs da extensão aparecerão no Output Channel "MAD - Mermaid Auto-Doccing"');
-    log.info('MAD: Para ver: View → Output → selecione "MAD - Mermaid Auto-Doccing"');
-    log.info('========================================');
+    // Log de ativação (limpo para produção)
+    log.info('Extensão ativada - Pronta para gerar diagramas');
     
     // Notificação visual para confirmar ativação
     vscode.window.showInformationMessage('🚀 MAD ativada! Verifique o Output Channel "MAD - Mermaid Auto-Doccing"', 'OK').then(() => {
@@ -210,103 +199,19 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(generateDiagramCommand);
 
-    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid com troubleshooting ──
+    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid (produção: logs limpos) ──
     async function saveToOutputFile(content: string): Promise<string> {
         const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
         const outputPath = outputFile.fsPath;
         
-        log.info('========== INÍCIO DO SAVE ==========');
-        log.info(`Caminho alvo: ${outputPath}`);
-        log.info(`Tamanho do conteúdo: ${content.length} bytes`);
-        log.info(`Tipo de conteúdo: ${content.startsWith('ERROR:') ? 'ERRO' : 'DIAGRAMA'}`);
-        log.info(`Preview (primeiros 100 chars): ${content.substring(0, 100)}`);
-        
         try {
-            // Verifica se o diretório /tmp existe e tem permissões
-            const tmpDir = vscode.Uri.file('/tmp');
-            try {
-                const tmpStat = await vscode.workspace.fs.stat(tmpDir);
-                log.info(`Diretório /tmp existe (tipo: ${tmpStat.type}, tamanho: ${tmpStat.size})`);
-            } catch (dirError) {
-                const dirErrorMsg = dirError instanceof Error ? dirError.message : String(dirError);
-                log.error(`ERRO ao acessar diretório /tmp: ${dirErrorMsg}`);
-                throw new Error(`Diretório /tmp não acessível: ${dirErrorMsg}`);
-            }
-            
-            // Verifica se o arquivo já existe
-            let fileExisted = false;
-            let oldSize = 0;
-            try {
-                const oldStat = await vscode.workspace.fs.stat(outputFile);
-                fileExisted = true;
-                oldSize = oldStat.size;
-                log.info(`Arquivo existente encontrado (tamanho anterior: ${oldSize} bytes)`);
-            } catch (statError) {
-                log.info(`Arquivo não existe ainda (será criado)`);
-            }
-            
-            // Converte e escreve o arquivo
             const encoder = new TextEncoder();
             const contentBytes = encoder.encode(content);
-            log.info(`Convertido para bytes: ${contentBytes.length} bytes`);
-            
-            const startTime = Date.now();
             await vscode.workspace.fs.writeFile(outputFile, contentBytes);
-            const writeTime = Date.now() - startTime;
-            
-            log.info(`writeFile() concluído em ${writeTime}ms`);
-            
-            // Verifica se o arquivo foi realmente escrito
-            try {
-                const newStat = await vscode.workspace.fs.stat(outputFile);
-                const newSize = newStat.size;
-                const sizeMatch = newSize === contentBytes.length;
-                
-                log.info('Verificação pós-escrita:');
-                log.info(`  - Tamanho esperado: ${contentBytes.length} bytes`);
-                log.info(`  - Tamanho real: ${newSize} bytes`);
-                log.info(`  - Tamanhos coincidem: ${sizeMatch ? 'SIM ✓' : 'NÃO ✗'}`);
-                log.info(`  - Modificado em: ${newStat.mtime}`);
-                
-                if (!sizeMatch) {
-                    log.error('ALERTA - Tamanho do arquivo não corresponde!');
-                    log.error(`  Diferença: ${Math.abs(newSize - contentBytes.length)} bytes`);
-                }
-                
-                // Lê o arquivo de volta para confirmar
-                const fileContent = await vscode.workspace.fs.readFile(outputFile);
-                const decodedContent = new TextDecoder().decode(fileContent);
-                const contentMatch = decodedContent === content;
-                
-                log.info(`  - Conteúdo corresponde: ${contentMatch ? 'SIM ✓' : 'NÃO ✗'}`);
-                
-                if (!contentMatch) {
-                    log.error('ALERTA - Conteúdo do arquivo não corresponde!');
-                    log.error(`  Esperado (início): ${content.substring(0, 50)}`);
-                    log.error(`  Lido (início): ${decodedContent.substring(0, 50)}`);
-                }
-                
-                log.info('========== SAVE CONCLUÍDO COM SUCESSO ==========');
-                return outputPath;
-                
-            } catch (verifyError) {
-                const verifyErrorMsg = verifyError instanceof Error ? verifyError.message : String(verifyError);
-                log.error(`ERRO na verificação pós-escrita: ${verifyErrorMsg}`);
-                throw new Error(`Falha na verificação do arquivo: ${verifyErrorMsg}`);
-            }
-            
+            return outputPath;
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            const errorStack = error instanceof Error ? error.stack : 'No stack trace';
-            
-            log.error('========== ERRO NO SAVE ==========');
-            log.error(`Erro: ${errorMsg}`);
-            log.error(`Stack: ${errorStack}`);
-            log.error(`Caminho: ${outputPath}`);
-            log.error(`Conteúdo (início): ${content.substring(0, 100)}`);
-            log.error('=====================================');
-            
-            // Não propaga o erro para não quebrar o fluxo da extensão
+            log.error(`Falha ao salvar ${outputPath}: ${errorMsg}`);
             return outputPath;
         }
     }
@@ -316,45 +221,31 @@ export function activate(context: vscode.ExtensionContext) {
     const SAVE_COOLDOWN_MS = 1000; // Evita múltiplos saves em rápida sequência
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (document) => {
-            log.info('========================================');
-            log.info(`EVENTO onDidSaveTextDocument DISPARADO!`);
-            log.info(`Arquivo: ${document.fileName}`);
-            log.info(`Language: ${document.languageId}`);
-            log.info(`Uri: ${document.uri.toString()}`);
-            log.info('========================================');
-            
             // Ignora markdown
-            if (document.languageId === 'markdown') {
-                log.info('Ignorado: é markdown');
-                return;
-            }
+            if (document.languageId === 'markdown') return;
             
             // Verifica se tem tags MAD
             const text = document.getText();
-            if (!text.includes('//@') && !text.includes('// @')) {
-                log.info('Ignorado: não tem tags MAD');
-                return;
+            if (!text.includes('//@') && !text.includes('// @')) return;
+            
+            // Verifica se tem tag de diagrama (procura em todo o arquivo)
+            const lines = text.split(/\r?\n/);
+            let tagMatch: RegExpMatchArray | null = null;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const match = lines[i].match(/\/\/@::(.+)/);
+                if (match) {
+                    tagMatch = match;
+                    break;
+                }
             }
             
-            // Verifica se tem tag de diagrama na primeira linha
-            const firstLine = document.lineAt(0).text;
-            const tagMatch = firstLine.match(/\/\/@::(.+)/);
-            if (!tagMatch) {
-                log.info('Ignorado: não tem tag de diagrama na primeira linha');
-                return;
-            }
-            
-            log.info(`Tag encontrada: ${tagMatch[1]}`);
+            if (!tagMatch) return;
             
             // Cooldown para evitar processamento duplicado
             const now = Date.now();
-            if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
-                log.info('Save ignorado (cooldown)');
-                return;
-            }
+            if (now - lastSaveTime < SAVE_COOLDOWN_MS) return;
             lastSaveTime = now;
-            
-            log.info(`Auto-generate iniciado para ${document.fileName}`);
             
             try {
                 const fullId = tagMatch[1];
@@ -369,24 +260,16 @@ export function activate(context: vscode.ExtensionContext) {
                 const result = generateDiagram(diagramContext);
                 
                 if (result.success && result.code) {
-                    const filePath = await saveToOutputFile(result.code);
+                    await saveToOutputFile(result.code);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
-                    log.info(`Diagrama gerado com sucesso em ${filePath} (${result.code.length} chars)`);
                 } else if (!result.success) {
                     const errorMsg = result.errorMessage || 'Erro desconhecido.';
                     await saveToOutputFile(`ERROR: ${errorMsg}`);
-                    log.warn(`Falha ao gerar diagrama: ${errorMsg}`);
                 }
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
-                log.error(`Erro no auto-generate: ${errorMsg}`);
-                // Tenta salvar o erro mas não propaga
-                try {
-                    await saveToOutputFile(`ERROR: ${errorMsg}`);
-                } catch (saveError) {
-                    log.error(`Falha crítica ao salvar arquivo de erro: ${saveError}`);
-                }
+                await saveToOutputFile(`ERROR: ${errorMsg}`);
             }
         })
     );
