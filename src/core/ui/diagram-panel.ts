@@ -25,7 +25,12 @@ export class MADDiagramPanel {
             besideColumn,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                // Content Security Policy para evitar warnings e melhorar segurança
+                // Permite scripts do CDN do Mermaid e html-to-image
+                localResourceRoots: [
+                    vscode.Uri.joinPath(extensionUri, 'assets')
+                ]
             }
         );
 
@@ -76,6 +81,7 @@ export class MADDiagramPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mermaid Diagram</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src https://cdn.jsdelivr.net data:;">
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
     <style>

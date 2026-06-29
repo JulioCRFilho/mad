@@ -6,10 +6,18 @@ import { filterAllNodes } from '../diagram/parser';
  * Shows the ID, formatted label, and code preview below the tag.
  */
 export class MADHoverProvider implements vscode.HoverProvider {
+    private static tagCache = new Map<string, boolean>();
+    private static readonly CACHE_TTL = 5000; // 5 seconds
+
     provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.Hover> {
         const lineText = document.lineAt(position.line).text;
 
-        // Verifica se a linha tem uma tag //@
+        // Quick check: line must contain //@
+        if (!lineText.includes('//@')) {
+            return null;
+        }
+
+        // Verifica se a linha tem uma tag //@ válida
         const tagMatch = lineText.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
         if (!tagMatch) return null;
 

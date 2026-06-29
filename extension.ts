@@ -421,8 +421,10 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // ── Click detection to open diagram ──
+    // ── Click detection to open diagram (with throttling) ──
     let lastClickLine = -1;
+    let lastClickTime = 0;
+    const CLICK_THROTTLE_MS = 300;
     const clickDetection = vscode.window.onDidChangeTextEditorSelection(event => {
         const editor = event.textEditor;
         if (!editor) return;
@@ -432,9 +434,14 @@ export function activate(context: vscode.ExtensionContext) {
         if (!selection.isEmpty) return;
 
         const currentLine = selection.active.line;
+        const now = Date.now();
 
-        if (currentLine === lastClickLine) return;
+        // Throttle: ignore if same line and within throttle window
+        if (currentLine === lastClickLine && now - lastClickTime < CLICK_THROTTLE_MS) {
+            return;
+        }
         lastClickLine = currentLine;
+        lastClickTime = now;
 
         updateDecorations(editor);
 
@@ -445,7 +452,10 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(clickDetection);
 
-    // ── Change listeners ──
+    // ── Change listeners (with throttling) ──
+    let lastDecorationUpdate = 0;
+    const DECORATION_THROTTLE_MS = 100;
+
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
         if (!editor) return;
         if (isMarkdownDocument(editor.document)) return;
@@ -456,7 +466,14 @@ export function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.activeTextEditor;
         if (!editor) return;
         if (isMarkdownDocument(editor.document)) return;
-        if (event.document === editor.document) updateDecorations(editor);
+        if (event.document !== editor.document) return;
+
+        const now = Date.now();
+        if (now - lastDecorationUpdate < DECORATION_THROTTLE_MS) {
+            return;
+        }
+        lastDecorationUpdate = now;
+        updateDecorations(editor);
     }));
 
     // ── Update initial decorations ──

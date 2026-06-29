@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 // Regex to detect lines with //@ (any line starting with //@)
 export class MADDecorationManager {
     private decorationType: vscode.TextEditorDecorationType;
+    private static readonly DEBOUNCE_MS = 150;
 
     constructor(iconPath: string) {
         this.decorationType = vscode.window.createTextEditorDecorationType({
