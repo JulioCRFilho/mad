@@ -144,13 +144,19 @@ export class MADDiagramPanel {
             justify-content: center;
             align-items: flex-start;
             padding: 24px;
-            overflow: auto;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .mermaid-container.dragging {
+            cursor: grabbing;
         }
         .mermaid {
             display: flex;
             justify-content: center;
             min-height: 200px;
             width: 100%;
+            transform-origin: center top;
+            will-change: transform;
         }
         .zoom-controls {
             display: flex;
@@ -192,6 +198,8 @@ export class MADDiagramPanel {
     <script>
         const MERMAID_CODE = \`${escapedMermaidCode}\`;
         let currentZoom = 1.0;
+        let translateX = 0;
+        let translateY = 0;
         const ZOOM_STEP = 0.1;
         const MIN_ZOOM = 0.3;
         const MAX_ZOOM = 3.0;
@@ -216,11 +224,15 @@ export class MADDiagramPanel {
             setTimeout(() => { el.textContent = ''; }, 3000);
         }
 
-        function updateZoom() {
+        function updateTransform() {
             const el = document.getElementById('mermaidContent');
-            el.style.transform = \`scale(\${currentZoom})\`;
+            el.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${currentZoom})\`;
             el.style.transformOrigin = 'center top';
             document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+        }
+
+        function updateZoom() {
+            updateTransform();
         }
 
         function zoomIn() {
@@ -323,6 +335,49 @@ export class MADDiagramPanel {
             });
             setStatus(query ? \`Filtered: "\${query}"\` : 'Filter cleared');
         }
+
+        // Pan functionality
+        const container = document.getElementById('mermaidContainer');
+        const mermaidContent = document.getElementById('mermaidContent');
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let initialTranslateX = 0;
+        let initialTranslateY = 0;
+
+        container.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.toolbar')) return;
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialTranslateX = translateX;
+            initialTranslateY = translateY;
+            container.classList.add('dragging');
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            translateX = initialTranslateX + dx;
+            translateY = initialTranslateY + dy;
+            updateTransform();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            container.classList.remove('dragging');
+        });
+
+        // Pinch zoom (trackpad gesture)
+        container.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+                currentZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + delta));
+                updateTransform();
+            }
+        }, { passive: false });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
