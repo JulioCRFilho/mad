@@ -486,9 +486,33 @@ class LoginController {
 
 When you insert or modify MAD tags, you MUST validate the generated diagram by following this flow:
 
+### CRITICAL: One diagram at a time
+
+**The file `/tmp/mad-diagram.mermaid` is ALWAYS overwritten on each save.**  
+This means you **MUST validate one diagram completely before moving to the next**.  
+Do NOT add tags for multiple diagrams and validate them all at once — only the last saved diagram will be in the file.
+
+**Correct workflow:**
+```
+1. Add tags for Diagram A
+2. Save → validate /tmp/mad-diagram.mermaid (shows Diagram A)
+3. If OK → mark Diagram A as complete
+4. Add tags for Diagram B
+5. Save → validate /tmp/mad-diagram.mermaid (now shows Diagram B)
+6. If OK → mark Diagram B as complete
+7. Continue...
+```
+
+**Wrong workflow:**
+```
+❌ Add tags for Diagram A + Diagram B + Diagram C
+❌ Save once
+❌ Try to validate all three (only C will be in the file!)
+```
+
 ### How the validation works
 
-1. You insert/modify `//@` tags in the code
+1. You insert/modify `//@` tags in the code for **ONE diagram**
 2. Save the file (the user can do `Cmd+S` or you can request them to save)
 3. The VS Code extension automatically detects the save and generates the Mermaid diagram
 4. The diagram is saved to `/tmp/mad-diagram.mermaid` (always overwritten, never duplicated)
@@ -498,7 +522,7 @@ When you insert or modify MAD tags, you MUST validate the generated diagram by f
    ```
 6. Verify the diagram matches what the tags should produce
 7. If incorrect: adjust the tags, save again, and re-validate
-8. If correct: deliver the final tags + validated diagram
+8. If correct: **move to the next diagram** (repeat from step 1)
 
 ### File location
 

@@ -148,29 +148,33 @@ export function activate(context: vscode.ExtensionContext) {
             const result = generateDiagram(diagramContext);
 
             if (!result.success) {
-                vscode.window.showErrorMessage(result.errorMessage || 'Erro ao gerar diagrama.');
+                const errorMsg = result.errorMessage || 'Erro ao gerar diagrama.';
+                vscode.window.showErrorMessage(errorMsg);
+                await saveToOutputFile(`ERROR: ${errorMsg}`);
                 return;
             }
 
-            // Salva em arquivo fixo em /tmp (sobrescreve sempre)
-            const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
-            const encoder = new TextEncoder();
-            await vscode.workspace.fs.writeFile(outputFile, encoder.encode(result.code));
-            
-            // Salva também o código em globalState para acesso rápido
+            await saveToOutputFile(result.code || '');
             await context.globalState.update('mad.lastDiagramCode', result.code);
             await context.globalState.update('mad.lastDiagramType', fullId);
 
-            // Retorna caminho do arquivo
             return {
                 success: true,
                 code: result.code,
                 type: fullId,
-                file: outputFile.fsPath
+                file: '/tmp/mad-diagram.mermaid'
             };
         }
     );
     context.subscriptions.push(generateDiagramCommand);
+
+    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid ──
+    async function saveToOutputFile(content: string) {
+        const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(outputFile, encoder.encode(content));
+        return outputFile.fsPath;
+    }
 
     // ── Auto-generate diagram on save (for AI agent) ──
     context.subscriptions.push(
@@ -182,7 +186,7 @@ export function activate(context: vscode.ExtensionContext) {
             const text = document.getText();
             if (!text.includes('//@') && !text.includes('// @')) return;
             
-            // Verifica se tem tag de diagrama
+            // Verifica se tem tag de diagrama na primeira linha
             const firstLine = document.lineAt(0).text;
             const tagMatch = firstLine.match(/\/\/@::(.+)/);
             if (!tagMatch) return;
@@ -199,20 +203,20 @@ export function activate(context: vscode.ExtensionContext) {
                 
                 const result = generateDiagram(diagramContext);
                 
-                if (result.success) {
-                    // Salva em /tmp/mad-diagram.mermaid
-                    const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
-                    const encoder = new TextEncoder();
-                    await vscode.workspace.fs.writeFile(outputFile, encoder.encode(result.code));
-                    
-                    // Atualiza globalState
+                if (result.success && result.code) {
+                    const filePath = await saveToOutputFile(result.code);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
-                    
-                    console.log(`MAD: Diagrama gerado automaticamente em ${outputFile.fsPath}`);
+                    console.log(`MAD: Diagrama gerado em ${filePath}`);
+                } else if (!result.success) {
+                    const errorMsg = result.errorMessage || 'Erro desconhecido.';
+                    await saveToOutputFile(`ERROR: ${errorMsg}`);
+                    console.warn('MAD: Falha ao gerar diagrama:', errorMsg);
                 }
             } catch (error) {
-                console.error('MAD: Erro ao gerar diagrama automaticamente:', error);
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                await saveToOutputFile(`ERROR: ${errorMsg}`);
+                console.error('MAD: Erro no auto-generate:', errorMsg);
             }
         })
     );
