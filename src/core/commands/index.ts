@@ -66,10 +66,20 @@ export function getHandler(diagramType: string): DiagramCommandHandler {
 export function validateAndDisplayDiagram(context: DiagramCommandContext): DiagramResult {
     const { document } = context;
 
-    // Read the diagram type from the first line
-    const firstLine = document.getText().split(/\r?\n/)[0] || '';
-    const match = firstLine.match(/\/\/@::(.+)/);
-    const diagramType = match ? match[1].trim() : 'flowchart TD';
+    // Read the diagram type from the document (search all lines)
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    let tagMatch: RegExpMatchArray | null = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/\/\/@::(.+)/);
+        if (match) {
+            tagMatch = match;
+            break;
+        }
+    }
+    
+    const diagramType = tagMatch ? tagMatch[1].trim() : 'flowchart TD';
 
     // Get the appropriate handler and execute
     const handler = getHandler(diagramType);
@@ -84,10 +94,20 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
 export function generateDiagram(context: DiagramCommandContext): DiagramResult & { code?: string } {
     const { document } = context;
 
-    // Read the diagram type from the first line
-    const firstLine = document.getText().split(/\r?\n/)[0] || '';
-    const match = firstLine.match(/\/\/@::(.+)/);
-    const diagramType = match ? match[1].trim() : 'flowchart TD';
+    // Read the diagram type from the document (search all lines)
+    const text = document.getText();
+    const lines = text.split(/\r?\n/);
+    let tagMatch: RegExpMatchArray | null = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/\/\/@::(.+)/);
+        if (match) {
+            tagMatch = match;
+            break;
+        }
+    }
+    
+    const diagramType = tagMatch ? tagMatch[1].trim() : 'flowchart TD';
 
     // Get the appropriate handler and generate only (no display)
     const handler = getHandler(diagramType);

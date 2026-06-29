@@ -221,12 +221,20 @@ export function activate(context: vscode.ExtensionContext) {
     const SAVE_COOLDOWN_MS = 1000; // Evita múltiplos saves em rápida sequência
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (document) => {
+            log.info(`Save detectado: ${document.fileName}`);
+            
             // Ignora markdown
-            if (document.languageId === 'markdown') return;
+            if (document.languageId === 'markdown') {
+                log.info('Ignorado: arquivo markdown');
+                return;
+            }
             
             // Verifica se tem tags MAD
             const text = document.getText();
-            if (!text.includes('//@') && !text.includes('// @')) return;
+            if (!text.includes('//@') && !text.includes('// @')) {
+                log.info('Ignorado: sem tags MAD');
+                return;
+            }
             
             // Verifica se tem tag de diagrama (procura em todo o arquivo)
             const lines = text.split(/\r?\n/);
@@ -240,11 +248,19 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
             
-            if (!tagMatch) return;
+            if (!tagMatch) {
+                log.info('Ignorado: sem tag de diagrama //@::');
+                return;
+            }
+            
+            log.info(`Tag encontrada: ${tagMatch[1]}`);
             
             // Cooldown para evitar processamento duplicado
             const now = Date.now();
-            if (now - lastSaveTime < SAVE_COOLDOWN_MS) return;
+            if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
+                log.info('Ignorado: cooldown ativo');
+                return;
+            }
             lastSaveTime = now;
             
             try {
@@ -263,13 +279,16 @@ export function activate(context: vscode.ExtensionContext) {
                     await saveToOutputFile(result.code);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
+                    log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
                 } else if (!result.success) {
                     const errorMsg = result.errorMessage || 'Erro desconhecido.';
                     await saveToOutputFile(`ERROR: ${errorMsg}`);
+                    log.warn(`Falha ao gerar diagrama: ${errorMsg}`);
                 }
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 await saveToOutputFile(`ERROR: ${errorMsg}`);
+                log.error(`Erro no auto-generate: ${errorMsg}`);
             }
         })
     );
