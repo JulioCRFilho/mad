@@ -6,36 +6,19 @@ import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
 import { MADFoldingProvider } from './src/core/ui/folding-provider';
 import { MADDiagramPanel } from './src/core/ui/diagram-panel';
 import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
+import { validateDiagramCounts } from './src/core/commands/shared/validation';
+import { log, getOutputChannel } from './src/core/log';
+import { SUPPORTED_LANGUAGES } from './src/core/languages';
+import { createSaveHandler, saveToOutputFile } from './src/core/save-handler';
+
+const OUTPUT_FILE = vscode.Uri.file('/tmp/mad-diagram.mermaid');
 
 function isMarkdownDocument(document: vscode.TextDocument): boolean {
     return document.languageId === 'markdown';
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('MAD: ========== ACTIVATE CHAMADO ==========');
-    console.log('MAD: Contexto recebido:', context.extensionUri.toString());
-    
-    // Cria OutputChannel dedicado para logs da extensão
-    const outputChannel = vscode.window.createOutputChannel('MAD - Mermaid Auto-Doccing');
-    context.subscriptions.push(outputChannel);
-    
-    // Função helper para logging (produção: limpo e essencial)
-    const log = {
-        info: (msg: string) => {
-            const timestamp = new Date().toISOString().split('T')[0]; // Apenas data
-            console.log(`[MAD ${timestamp}] ${msg}`);
-            outputChannel.appendLine(`[${timestamp}] ${msg}`);
-        },
-        error: (msg: string) => {
-            console.error(`[MAD ERROR] ${msg}`);
-            outputChannel.appendLine(`ERROR: ${msg}`);
-            outputChannel.show(); // Mostra automaticamente apenas em erros
-        },
-        warn: (msg: string) => {
-            console.warn(`[MAD WARN] ${msg}`);
-            outputChannel.appendLine(`WARN: ${msg}`);
-        }
-    };
+    log.info('Extensão ativada');
     
     // Limpa o arquivo de diagrama ao iniciar
     const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
@@ -209,249 +192,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(generateDiagramCommand);
 
-    // ── Helper: valida se o diagrama gerado tem a mesma quantidade de elementos que as tags ──
-    function validateDiagramCounts(document: vscode.TextDocument, mermaidCode: string, diagramType: string): boolean {
-        const text = document.getText();
-        const lines = text.split(/\r?\n/);
-        
-        // Conta TODAS as tags no arquivo
-        let allTags: Array<{ id: string; line: number; isConnection: boolean; targetIds: string[] }> = [];
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            
-            // Tenta capturar diferentes formatos de tag
-            let tagId: string | null = null;
-            let isConnection = false;
-            let targetIds: string[] = [];
-            
-            // Formato 1: //@ID:label (nó normal)
-            const normalMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
-            // Formato 2: //@->Target (forward pointer implícito)
-            const implicitMatch = line.match(/\/\/@->([\w.]+)/);
-            // Formato 3: //@Source->Target (forward pointer explícito)
-            const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)/);
-            // Formato 4: //@--Target, //@<|--Target, //@*--Target, //@o--Target (class relationships)
-            const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--)([\w.]+)/);
-            
-            if (explicitMatch) {
-                tagId = `${explicitMatch[1]}->${explicitMatch[2]}`;
-                isConnection = true;
-                targetIds.push(explicitMatch[2]);
-            } else if (implicitMatch) {
-                tagId = `->${implicitMatch[1]}`;
-                isConnection = true;
-                targetIds.push(implicitMatch[1]);
-            } else if (classMatch) {
-                tagId = classMatch[2];
-                isConnection = true;
-                targetIds.push(classMatch[2]);
-            } else if (normalMatch) {
-                tagId = normalMatch[1];
-                isConnection = false;
-            }
-            
-            if (!tagId) continue;
-            
-            // Ignora a linha de tipo de diagrama
-            if (tagId.startsWith('::')) continue;
-            
-            allTags.push({ id: tagId, line: i, isConnection, targetIds });
-        }
-        
-        // Conta elementos no diagrama Mermaid
-        let diagramNodes = 0;
-        let diagramConnections = 0;
-        const diagramLines = mermaidCode.split(/\r?\n/);
-        for (const line of diagramLines) {
-            if (line.includes('participant ') || line.includes('class ') || line.includes('subgraph ')) {
-                diagramNodes++;
-            }
-            // Detecta qualquer tipo de conexão: ->, -->, --, --|>, *--, o--, <|--
-            if (line.match(/\s(--|-->|->|\-\-\|>|\*--|o--|<\|--)\s/)) {
-                diagramConnections++;
-            }
-        }
-        
-        // Validações
-        const issues: string[] = [];
-        
-        // 1. Conta tags e nós (específico por tipo de diagrama)
-        let expectedNodes: number;
-        if (diagramType.toLowerCase().startsWith('classdiagram')) {
-            // Em classDiagram, apenas grupos são classes (métodos ficam dentro)
-            expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
-        } else if (diagramType.toLowerCase().startsWith('sequencediagram')) {
-            // Em sequenceDiagram, apenas grupos são participants
-            expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
-        } else {
-            // Outros diagramas: conta todos os nós
-            expectedNodes = allTags.filter(t => !t.isConnection).length;
-        }
-        
-        if (expectedNodes !== diagramNodes) {
-            issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
-        }
-        
-        // 2. Conta conexões
-        const connectionCount = allTags.filter(t => t.isConnection).length;
-        if (connectionCount !== diagramConnections) {
-            issues.push(`Conexões(${connectionCount}) ≠ Diagrama(${diagramConnections})`);
-        }
-        
-        // 3. Verifica tags soltas (nós sem código abaixo)
-        // Apenas para nós numerados (entry nodes), não para grupos ou conexões
-        for (const tag of allTags) {
-            if (tag.isConnection) continue; // Ignora conexões
-            if (!/\d/.test(tag.id)) continue; // Ignora grupos (sem números)
-            
-            // Verifica se há código após a tag
-            let hasCode = false;
-            for (let j = tag.line + 1; j < Math.min(tag.line + 5, lines.length); j++) {
-                const nextLine = lines[j];
-                if (nextLine.match(/\/\/@/)) continue; // Pula outras tags
-                if (nextLine.trim().length > 0) {
-                    hasCode = true;
-                    break;
-                }
-            }
-            
-            if (!hasCode) {
-                issues.push(`Tag solta: ${tag.id} (linha ${tag.line + 1})`);
-            }
-        }
-        
-        // 4. Verifica conexões apontando para IDs inexistentes
-        const validIds = new Set(allTags.map(t => t.id));
-        for (const tag of allTags) {
-            if (!tag.isConnection) continue;
-            
-            for (const targetId of tag.targetIds) {
-                if (!validIds.has(targetId)) {
-                    issues.push(`Conexão ${tag.id} aponta para ID inexistente: ${targetId}`);
-                }
-            }
-        }
-        
-        if (issues.length > 0) {
-            log.warn(`Validação: ${issues.join(' | ')}`);
-            return false;
-        } else {
-            log.info(`Validação OK: ${diagramNodes} nós, ${diagramConnections} conexões`);
-            return true;
-        }
-    }
-
-    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid ──
-    async function saveToOutputFile(content: string, document?: vscode.TextDocument, diagramType?: string): Promise<string> {
-        const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
-        const outputPath = outputFile.fsPath;
-        
-        log.info(`Salvando em: ${outputPath}`);
-        log.info(`Tamanho do conteúdo: ${content.length} bytes`);
-        log.info(`Preview (primeiros 100 chars): ${content.substring(0, 100)}`);
-        
-        try {
-            const encoder = new TextEncoder();
-            const contentBytes = encoder.encode(content);
-            await vscode.workspace.fs.writeFile(outputFile, contentBytes);
-            log.info(`Arquivo salvo com sucesso: ${outputPath}`);
-            
-            // Valida contagens se documento e tipo foram fornecidos
-            if (document && diagramType && !content.startsWith('ERROR:')) {
-                validateDiagramCounts(document, content, diagramType);
-            }
-            
-            return outputPath;
-        } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            log.error(`Falha ao salvar ${outputPath}: ${errorMsg}`);
-            return outputPath;
-        }
-    }
-
     // ── Auto-generate diagram on save (for AI agent) ──
-    let lastSaveTime = 0;
-    const SAVE_COOLDOWN_MS = 1000; // Evita múltiplos saves em rápida sequência
-    context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(async (document) => {
-            log.info(`Save detectado: ${document.fileName}`);
-            
-            // Ignora markdown
-            if (document.languageId === 'markdown') {
-                log.info('Ignorado: arquivo markdown');
-                return;
-            }
-            
-            // Verifica se tem tags MAD
-            const text = document.getText();
-            if (!text.includes('//@') && !text.includes('// @')) {
-                log.info('Ignorado: sem tags MAD');
-                return;
-            }
-            
-            // Verifica se tem tag de diagrama (procura em todo o arquivo)
-            const lines = text.split(/\r?\n/);
-            let tagMatch: RegExpMatchArray | null = null;
-            
-            for (let i = 0; i < lines.length; i++) {
-                const match = lines[i].match(/\/\/@::(.+)/);
-                if (match) {
-                    tagMatch = match;
-                    break;
-                }
-            }
-            
-            if (!tagMatch) {
-                log.info('Ignorado: sem tag de diagrama //@::');
-                return;
-            }
-            
-            log.info(`Tag encontrada: ${tagMatch[1]}`);
-            
-            // Cooldown para evitar processamento duplicado
-            const now = Date.now();
-            if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
-                log.info('Ignorado: cooldown ativo');
-                return;
-            }
-            lastSaveTime = now;
-            
-            try {
-                const fullId = tagMatch[1];
-                const prefix = fullId.split(/[0-9]/)[0];
-                
-                log.info(`Documento tem ${text.length} chars`);
-                log.info(`Primeiras 3 linhas: ${text.split(/\r?\n/).slice(0, 3).join(' | ')}`);
-                
-                const diagramContext: DiagramCommandContext = {
-                    document: document,
-                    prefix: prefix,
-                    extensionUri: context.extensionUri
-                };
-                
-                const result = generateDiagram(diagramContext);
-                
-                if (result.success && result.code) {
-                    log.info(`Código gerado (primeiros 200 chars): ${result.code.substring(0, 200)}`);
-                    await saveToOutputFile(result.code, document, fullId);
-                    await context.globalState.update('mad.lastDiagramCode', result.code);
-                    await context.globalState.update('mad.lastDiagramType', fullId);
-                    log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
-                    
-                    // Atualiza o painel se estiver aberto
-                    MADDiagramPanel.createOrShow(context.extensionUri, result.code);
-                } else if (!result.success) {
-                    const errorMsg = result.errorMessage || 'Erro desconhecido.';
-                    await saveToOutputFile(`ERROR: ${errorMsg}`);
-                    log.warn(`Falha ao gerar diagrama: ${errorMsg}`);
-                }
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : String(error);
-                await saveToOutputFile(`ERROR: ${errorMsg}`);
-                log.error(`Erro no auto-generate: ${errorMsg}`);
-            }
-        })
-    );
+    context.subscriptions.push(createSaveHandler(context));
 
     // ── Command: Navigate to specific line ──
     const goToLineCommand = vscode.commands.registerCommand(
@@ -485,7 +227,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const showLogsCommand = vscode.commands.registerCommand(
         'mad.showLogs',
         () => {
-            outputChannel.show();
+            getOutputChannel().show();
             vscode.window.showInformationMessage('📋 Logs da extensão MAD abertos!');
         }
     );
@@ -528,24 +270,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // ── Hover Provider: tooltip com informações da tag ──
     const hoverProvider = vscode.languages.registerHoverProvider(
-        [
-            { language: 'javascript' },
-            { language: 'typescript' },
-            { language: 'python' },
-            { language: 'java' },
-            { language: 'csharp' },
-            { language: 'go' },
-            { language: 'rust' },
-            { language: 'php' },
-            { language: 'dart' },
-            { language: 'ruby' },
-            { language: 'swift' },
-            { language: 'kotlin' },
-            { language: 'scala' },
-            { language: 'cpp' },
-            { language: 'c' },
-            { language: 'sql' }
-        ],
+        SUPPORTED_LANGUAGES,
         new MADHoverProvider()
     );
     context.subscriptions.push(hoverProvider);
@@ -553,24 +278,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // ── FoldingRange Provider: esconder/expandir blocos de tags ──
     context.subscriptions.push(
         vscode.languages.registerFoldingRangeProvider(
-            [
-                { language: 'javascript' },
-                { language: 'typescript' },
-                { language: 'python' },
-                { language: 'java' },
-                { language: 'csharp' },
-                { language: 'go' },
-                { language: 'rust' },
-                { language: 'php' },
-                { language: 'dart' },
-                { language: 'ruby' },
-                { language: 'swift' },
-                { language: 'kotlin' },
-                { language: 'scala' },
-                { language: 'cpp' },
-                { language: 'c' },
-                { language: 'sql' }
-            ],
+            SUPPORTED_LANGUAGES,
             new MADFoldingProvider()
         )
     );
@@ -642,24 +350,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // ── DocumentSymbol Provider: outline with tag tree ──
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider(
-            [
-                { language: 'javascript' },
-                { language: 'typescript' },
-                { language: 'python' },
-                { language: 'java' },
-                { language: 'csharp' },
-                { language: 'go' },
-                { language: 'rust' },
-                { language: 'php' },
-                { language: 'dart' },
-                { language: 'ruby' },
-                { language: 'swift' },
-                { language: 'kotlin' },
-                { language: 'scala' },
-                { language: 'cpp' },
-                { language: 'c' },
-                { language: 'sql' }
-            ],
+            SUPPORTED_LANGUAGES,
             new MADDocumentSymbolProvider()
         )
     );
