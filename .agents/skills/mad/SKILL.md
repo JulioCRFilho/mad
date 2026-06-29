@@ -11,7 +11,7 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 
 ## Fundamental rules
 
-1. **File's first line**: `//@::DiagramType` defines the diagram type.
+1. **First line**: `//@::DiagramType` defines the diagram type.
 2. **`//@` comments**: become nodes or connections in the diagram.
 3. **`//` comments without `@`**: Remove.
 4. **Documentation must stay in code**: NEVER create separate documentation files (`.md`, `.txt`, etc.) outside the source code. Tags are placed over the code they represent.
@@ -584,7 +584,7 @@ After finishing a task with MAD tags, the agent MUST validate its own work:
 
 When writing MAD tags, verify:
 
-- [ ] First line is `//@::type`?
+- [ ] First diagram line is `//@::type`?
 - [ ] Every important node has `//@`?
 - [ ] Tags eventually lead to actual code (not just floating tags)?
 - [ ] Nodes are correctly numbered (1, 1.1, 1.1.1)?
