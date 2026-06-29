@@ -8,6 +8,7 @@ export interface TagInfo {
     line: number;
     isConnection: boolean;
     targetIds: string[];
+    connections?: Array<{ id: string; label: string; arrowPrefix?: string }>;
 }
 
 /**
@@ -55,7 +56,15 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         if (!tagId) continue;
         if (tagId.startsWith('::')) continue;
         
-        allTags.push({ id: tagId, line: i, isConnection, targetIds });
+        const tagInfo: TagInfo = { id: tagId, line: i, isConnection, targetIds };
+        
+        // Adiciona connections se for um nó com conexões
+        if (!isConnection && normalMatch && normalMatch[2]) {
+            // Aqui poderíamos parsear connections se necessário
+            // Por enquanto, deixamos undefined
+        }
+        
+        allTags.push(tagInfo);
     }
     return allTags;
 }
@@ -165,12 +174,55 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     return issues;
 }
 
-function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, _diagramConnections: number): string[] {
+function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
     }
+    
+    // Simula o que o generator faz para contar conexões esperadas
+    const tagNodes = allTags.filter(t => !t.isConnection);
+    const groups = tagNodes.filter(t => !/\d/.test(t.id));
+    const numbered = tagNodes.filter(t => /\d/.test(t.id));
+    const entryNodes = numbered.filter(t => /^[a-zA-Z]+[0-9]+$/.test(t.id));
+    const sequenceNodes = numbered.filter(t => /\.[0-9]/.test(t.id));
+    
+    // Conta conexões únicas que o generator irá criar
+    const edges = new Set<string>();
+    
+    // 1. Conexões implícitas de sequence nodes (linhas 97-109 do generator)
+    for (const seq of sequenceNodes) {
+        const lastDot = seq.id.lastIndexOf('.');
+        if (lastDot > 0) {
+            const parentId = seq.id.substring(0, lastDot);
+            // Verifica se parentId existe como grupo ou node
+            const parentExists = groups.some(g => g.id === parentId) || 
+                                numbered.some(n => n.id === parentId);
+            if (parentExists) {
+                const key = `${parentId}->${seq.id}`;
+                edges.add(key);
+            }
+        }
+    }
+    
+    // 2. Conexões explícitas das tags (linhas 111-120 do generator)
+    // No flowchart, as conexões são tags do tipo //@->Target ou //@Source->Target
+    const connectionTags = allTags.filter(t => t.isConnection);
+    for (const conn of connectionTags) {
+        // Extrai source e target da tag
+        // Formato: "Source->Target" ou "->Target"
+        if (conn.id.includes('->')) {
+            const key = conn.id;
+            edges.add(key);
+        }
+    }
+    
+    const expectedConnections = edges.size;
+    if (expectedConnections !== diagramConnections) {
+        issues.push(`Conexões(${expectedConnections}) ≠ Diagrama(${diagramConnections})`);
+    }
+    
     return issues;
 }
 
