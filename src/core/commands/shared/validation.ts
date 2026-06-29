@@ -15,7 +15,7 @@ export function validateMADStructure(document: import('vscode').TextDocument, pr
  * Basic Mermaid syntax validation for Flowchart/Graph
  */
 function validateFlowchartSyntax(lines: string[]): { valid: boolean; error?: string } {
-    const hasNodes = lines.some(l => /^[A-Za-z0-9_]+\[/.test(l.trim()));
+    const hasNodes = lines.some(l => /^\s*[A-Za-z0-9_]+\[/.test(l));
     const hasConnections = lines.some(l => /-->/.test(l) || /---/.test(l) || /==>/.test(l));
 
     if (!hasNodes && !hasConnections) {
