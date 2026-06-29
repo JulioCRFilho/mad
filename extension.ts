@@ -4,6 +4,7 @@ import { validateAndDisplayDiagram, generateDiagram, DiagramCommandContext } fro
 import { MADHoverProvider } from './src/core/ui/hover-provider';
 import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
 import { MADFoldingProvider } from './src/core/ui/folding-provider';
+import { MADDiagramPanel } from './src/core/ui/diagram-panel';
 import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
 
 function isMarkdownDocument(document: vscode.TextDocument): boolean {
@@ -199,15 +200,20 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(generateDiagramCommand);
 
-    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid (produção: logs limpos) ──
+    // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid ──
     async function saveToOutputFile(content: string): Promise<string> {
         const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
         const outputPath = outputFile.fsPath;
+        
+        log.info(`Salvando em: ${outputPath}`);
+        log.info(`Tamanho do conteúdo: ${content.length} bytes`);
+        log.info(`Preview (primeiros 100 chars): ${content.substring(0, 100)}`);
         
         try {
             const encoder = new TextEncoder();
             const contentBytes = encoder.encode(content);
             await vscode.workspace.fs.writeFile(outputFile, contentBytes);
+            log.info(`Arquivo salvo com sucesso: ${outputPath}`);
             return outputPath;
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -267,6 +273,9 @@ export function activate(context: vscode.ExtensionContext) {
                 const fullId = tagMatch[1];
                 const prefix = fullId.split(/[0-9]/)[0];
                 
+                log.info(`Documento tem ${text.length} chars`);
+                log.info(`Primeiras 3 linhas: ${text.split(/\r?\n/).slice(0, 3).join(' | ')}`);
+                
                 const diagramContext: DiagramCommandContext = {
                     document: document,
                     prefix: prefix,
@@ -276,10 +285,14 @@ export function activate(context: vscode.ExtensionContext) {
                 const result = generateDiagram(diagramContext);
                 
                 if (result.success && result.code) {
+                    log.info(`Código gerado (primeiros 200 chars): ${result.code.substring(0, 200)}`);
                     await saveToOutputFile(result.code);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
                     log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
+                    
+                    // Atualiza o painel se estiver aberto
+                    MADDiagramPanel.createOrShow(context.extensionUri, result.code);
                 } else if (!result.success) {
                     const errorMsg = result.errorMessage || 'Erro desconhecido.';
                     await saveToOutputFile(`ERROR: ${errorMsg}`);

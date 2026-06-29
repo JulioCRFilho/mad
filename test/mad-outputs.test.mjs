@@ -77,12 +77,12 @@ describe('01 – Flowchart (01-flowchart-login.ts)', () => {
   });
 
   it('contains labels extracted from code', () => {
-    assert.ok(out.includes('Handle Login'));
+    assert.ok(out.includes('Handle login'));
     assert.ok(out.includes('Verify 2FA'));
     assert.ok(out.includes('Authenticate'));
-    assert.ok(out.includes('Create Session'));
-    assert.ok(out.includes('Challenge 2FA') || out.includes('Initiate Challenge'));
-    assert.ok(out.includes('Show Dashboard'));
+    assert.ok(out.includes('Create session'));
+    assert.ok(out.includes('Challenge 2FA'));
+    assert.ok(out.includes('Show dashboard'));
   });
 
   it('contains hierarchy edges', () => {
@@ -144,7 +144,7 @@ describe('03 – Class (03-class-diagram-oop.py)', () => {
   });
 
   it('contains Python methods', () => {
-    for (const m of ['+init()', '+Place Order()', '+Calculate Total()', '+Add Item()'])
+    for (const m of ['+__init__ method()', '+Place Order()', '+Calculate Total()', '+Add Item()'])
       assert.ok(out.includes(m), `method ${m}`);
   });
 

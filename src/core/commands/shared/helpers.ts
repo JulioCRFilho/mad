@@ -115,6 +115,10 @@ export function processRetroPointers(
                 label = node.id;
             } else if (isFlowchart && hasDots && node.description) {
                 label = node.description;
+            } else if (isEntry && node.description) {
+                // Para entry nodes, prioriza o description (comentário da tag)
+                // sobre o código, para que alterações em comentários atualizem o diagrama
+                label = node.description;
             } else {
                 label = fromCode || node.description || node.id;
             }
