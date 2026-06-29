@@ -46,6 +46,18 @@ export const sequenceGenerator: DiagramGenerator = {
                 continue;
             }
 
+            // Render numbered nodes as self-messages from their parent group
+            // Ex: //@Backend1:Parse multipart form → Backend->>Backend: Parse multipart form
+            if (/\d/.test(tag.id)) {
+                const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
+                if (groupMatch) {
+                    const groupId = groupMatch[1];
+                    if (participantSet.has(groupId)) {
+                        messages.push({ from: groupId, to: groupId, label: tag.label || tag.description || tag.id });
+                    }
+                }
+            }
+
             if (tag.connections && tag.connections.length > 0) {
                 const groupId = tag.id.match(/^([a-zA-Z_]+)/)?.[1];
                 if (groupId && participantSet.has(groupId)) {
