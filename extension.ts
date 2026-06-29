@@ -11,7 +11,7 @@ function isMarkdownDocument(document: vscode.TextDocument): boolean {
     return document.languageId === 'markdown';
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('MAD: ========== ACTIVATE CHAMADO ==========');
     console.log('MAD: Contexto recebido:', context.extensionUri.toString());
     
@@ -36,6 +36,15 @@ export function activate(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`WARN: ${msg}`);
         }
     };
+    
+    // Limpa o arquivo de diagrama ao iniciar
+    const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
+    try {
+        await vscode.workspace.fs.delete(outputFile);
+        log.info('Arquivo de diagrama limpo na ativação');
+    } catch (error) {
+        // Ignora erro se arquivo não existir
+    }
     
     // Log de ativação (limpo para produção)
     log.info('Extensão ativada - Pronta para gerar diagramas');
@@ -186,7 +195,7 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            await saveToOutputFile(result.code || '');
+            await saveToOutputFile(result.code || '', document, fullId);
             await context.globalState.update('mad.lastDiagramCode', result.code);
             await context.globalState.update('mad.lastDiagramType', fullId);
 
@@ -200,8 +209,140 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(generateDiagramCommand);
 
+    // ── Helper: valida se o diagrama gerado tem a mesma quantidade de elementos que as tags ──
+    function validateDiagramCounts(document: vscode.TextDocument, mermaidCode: string, diagramType: string): boolean {
+        const text = document.getText();
+        const lines = text.split(/\r?\n/);
+        
+        // Conta TODAS as tags no arquivo
+        let allTags: Array<{ id: string; line: number; isConnection: boolean; targetIds: string[] }> = [];
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Tenta capturar diferentes formatos de tag
+            let tagId: string | null = null;
+            let isConnection = false;
+            let targetIds: string[] = [];
+            
+            // Formato 1: //@ID:label (nó normal)
+            const normalMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
+            // Formato 2: //@->Target (forward pointer implícito)
+            const implicitMatch = line.match(/\/\/@->([\w.]+)/);
+            // Formato 3: //@Source->Target (forward pointer explícito)
+            const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)/);
+            // Formato 4: //@--Target, //@<|--Target, //@*--Target, //@o--Target (class relationships)
+            const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--)([\w.]+)/);
+            
+            if (explicitMatch) {
+                tagId = `${explicitMatch[1]}->${explicitMatch[2]}`;
+                isConnection = true;
+                targetIds.push(explicitMatch[2]);
+            } else if (implicitMatch) {
+                tagId = `->${implicitMatch[1]}`;
+                isConnection = true;
+                targetIds.push(implicitMatch[1]);
+            } else if (classMatch) {
+                tagId = classMatch[2];
+                isConnection = true;
+                targetIds.push(classMatch[2]);
+            } else if (normalMatch) {
+                tagId = normalMatch[1];
+                isConnection = false;
+            }
+            
+            if (!tagId) continue;
+            
+            // Ignora a linha de tipo de diagrama
+            if (tagId.startsWith('::')) continue;
+            
+            allTags.push({ id: tagId, line: i, isConnection, targetIds });
+        }
+        
+        // Conta elementos no diagrama Mermaid
+        let diagramNodes = 0;
+        let diagramConnections = 0;
+        const diagramLines = mermaidCode.split(/\r?\n/);
+        for (const line of diagramLines) {
+            if (line.includes('participant ') || line.includes('class ') || line.includes('subgraph ')) {
+                diagramNodes++;
+            }
+            // Detecta qualquer tipo de conexão: ->, -->, --, --|>, *--, o--, <|--
+            if (line.match(/\s(--|-->|->|\-\-\|>|\*--|o--|<\|--)\s/)) {
+                diagramConnections++;
+            }
+        }
+        
+        // Validações
+        const issues: string[] = [];
+        
+        // 1. Conta tags e nós (específico por tipo de diagrama)
+        let expectedNodes: number;
+        if (diagramType.toLowerCase().startsWith('classdiagram')) {
+            // Em classDiagram, apenas grupos são classes (métodos ficam dentro)
+            expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
+        } else if (diagramType.toLowerCase().startsWith('sequencediagram')) {
+            // Em sequenceDiagram, apenas grupos são participants
+            expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
+        } else {
+            // Outros diagramas: conta todos os nós
+            expectedNodes = allTags.filter(t => !t.isConnection).length;
+        }
+        
+        if (expectedNodes !== diagramNodes) {
+            issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        }
+        
+        // 2. Conta conexões
+        const connectionCount = allTags.filter(t => t.isConnection).length;
+        if (connectionCount !== diagramConnections) {
+            issues.push(`Conexões(${connectionCount}) ≠ Diagrama(${diagramConnections})`);
+        }
+        
+        // 3. Verifica tags soltas (nós sem código abaixo)
+        // Apenas para nós numerados (entry nodes), não para grupos ou conexões
+        for (const tag of allTags) {
+            if (tag.isConnection) continue; // Ignora conexões
+            if (!/\d/.test(tag.id)) continue; // Ignora grupos (sem números)
+            
+            // Verifica se há código após a tag
+            let hasCode = false;
+            for (let j = tag.line + 1; j < Math.min(tag.line + 5, lines.length); j++) {
+                const nextLine = lines[j];
+                if (nextLine.match(/\/\/@/)) continue; // Pula outras tags
+                if (nextLine.trim().length > 0) {
+                    hasCode = true;
+                    break;
+                }
+            }
+            
+            if (!hasCode) {
+                issues.push(`Tag solta: ${tag.id} (linha ${tag.line + 1})`);
+            }
+        }
+        
+        // 4. Verifica conexões apontando para IDs inexistentes
+        const validIds = new Set(allTags.map(t => t.id));
+        for (const tag of allTags) {
+            if (!tag.isConnection) continue;
+            
+            for (const targetId of tag.targetIds) {
+                if (!validIds.has(targetId)) {
+                    issues.push(`Conexão ${tag.id} aponta para ID inexistente: ${targetId}`);
+                }
+            }
+        }
+        
+        if (issues.length > 0) {
+            log.warn(`Validação: ${issues.join(' | ')}`);
+            return false;
+        } else {
+            log.info(`Validação OK: ${diagramNodes} nós, ${diagramConnections} conexões`);
+            return true;
+        }
+    }
+
     // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid ──
-    async function saveToOutputFile(content: string): Promise<string> {
+    async function saveToOutputFile(content: string, document?: vscode.TextDocument, diagramType?: string): Promise<string> {
         const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
         const outputPath = outputFile.fsPath;
         
@@ -214,6 +355,12 @@ export function activate(context: vscode.ExtensionContext) {
             const contentBytes = encoder.encode(content);
             await vscode.workspace.fs.writeFile(outputFile, contentBytes);
             log.info(`Arquivo salvo com sucesso: ${outputPath}`);
+            
+            // Valida contagens se documento e tipo foram fornecidos
+            if (document && diagramType && !content.startsWith('ERROR:')) {
+                validateDiagramCounts(document, content, diagramType);
+            }
+            
             return outputPath;
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -286,7 +433,7 @@ export function activate(context: vscode.ExtensionContext) {
                 
                 if (result.success && result.code) {
                     log.info(`Código gerado (primeiros 200 chars): ${result.code.substring(0, 200)}`);
-                    await saveToOutputFile(result.code);
+                    await saveToOutputFile(result.code, document, fullId);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
                     log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
