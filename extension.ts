@@ -169,14 +169,23 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(generateDiagramCommand);
 
     // ── Helper: salva conteúdo em /tmp/mad-diagram.mermaid ──
-    async function saveToOutputFile(content: string) {
-        const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
-        const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(outputFile, encoder.encode(content));
-        return outputFile.fsPath;
+    async function saveToOutputFile(content: string): Promise<string> {
+        try {
+            const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
+            const encoder = new TextEncoder();
+            await vscode.workspace.fs.writeFile(outputFile, encoder.encode(content));
+            console.log(`MAD: Arquivo temporário atualizado com sucesso (${content.length} bytes)`);
+            return outputFile.fsPath;
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`MAD: Erro ao escrever arquivo temporário: ${errorMsg}`);
+            throw error;
+        }
     }
 
     // ── Auto-generate diagram on save (for AI agent) ──
+    let lastSaveTime = 0;
+    const SAVE_COOLDOWN_MS = 1000; // Evita múltiplos saves em rápida sequência
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (document) => {
             // Ignora markdown
@@ -190,6 +199,16 @@ export function activate(context: vscode.ExtensionContext) {
             const firstLine = document.lineAt(0).text;
             const tagMatch = firstLine.match(/\/\/@::(.+)/);
             if (!tagMatch) return;
+            
+            // Cooldown para evitar processamento duplicado
+            const now = Date.now();
+            if (now - lastSaveTime < SAVE_COOLDOWN_MS) {
+                console.log('MAD: Save ignorado (cooldown)');
+                return;
+            }
+            lastSaveTime = now;
+            
+            console.log(`MAD: Auto-generate iniciado para ${document.fileName}`);
             
             try {
                 const fullId = tagMatch[1];
@@ -207,7 +226,7 @@ export function activate(context: vscode.ExtensionContext) {
                     const filePath = await saveToOutputFile(result.code);
                     await context.globalState.update('mad.lastDiagramCode', result.code);
                     await context.globalState.update('mad.lastDiagramType', fullId);
-                    console.log(`MAD: Diagrama gerado em ${filePath}`);
+                    console.log(`MAD: Diagrama gerado com sucesso em ${filePath} (${result.code.length} chars)`);
                 } else if (!result.success) {
                     const errorMsg = result.errorMessage || 'Erro desconhecido.';
                     await saveToOutputFile(`ERROR: ${errorMsg}`);
@@ -215,8 +234,13 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
-                await saveToOutputFile(`ERROR: ${errorMsg}`);
                 console.error('MAD: Erro no auto-generate:', errorMsg);
+                // Tenta salvar o erro mas não propaga
+                try {
+                    await saveToOutputFile(`ERROR: ${errorMsg}`);
+                } catch (saveError) {
+                    console.error('MAD: Falha crítica ao salvar arquivo de erro:', saveError);
+                }
             }
         })
     );
@@ -387,7 +411,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // Limpa cooldowns antigos (mais de 10 minutos)
-    setInterval(() => {
+    const cleanupInterval = setInterval(() => {
         const now = Date.now();
         for (const [key, cooldown] of unfoldCooldowns.entries()) {
             if (now > cooldown + 10 * 60 * 1000) {
@@ -395,6 +419,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     }, 60 * 1000);
+    context.subscriptions.push({ dispose: () => clearInterval(cleanupInterval) });
 
     // ── DocumentSymbol Provider: outline with tag tree ──
     context.subscriptions.push(
