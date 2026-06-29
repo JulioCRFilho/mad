@@ -1,6 +1,6 @@
 ---
 name: mad
-description: Mermaid Auto-Doccing — generates Mermaid diagrams from //@ comments in code.
+description: Mermaid Auto-Doccing — guides the AI agent in software development with MAD tags, generating Mermaid diagrams from //@ comments in code.
 ---
 
 # MAD — Mermaid Auto-Doccing
@@ -228,34 +228,6 @@ erDiagram
     Order }o--|| User : "belongs to"
 ```
 
-**Practical examples:**
-
-```typescript
-//@::graph LR
-
-//@Entry
-class Controller {
-  //@Entry1:Start
-  start() {
-    //@->Auth1:Validate token      // Source: Entry1 (current context)
-    //@->Database1:Fetch data     // Another connection from same context
-  }
-}
-
-//@Auth
-class AuthService {
-  //@Auth1:Verify JWT
-}
-
-//@Database
-class DatabaseService {
-  //@Database1:SQL query
-}
-
-//@Entry->Auth:Main flow         // Explicit source: Entry group
-//@Auth->Database:Query data     // Explicit source: Auth group
-```
-
 ### Class Diagram connections
 
 ```typescript
@@ -298,6 +270,36 @@ class ApiClient {
   }
 }
 ```
+
+## Connections in detail
+
+### Two types of connections
+
+**1. Implicit source (`//@->Target:label`)**
+```typescript
+// The source is the CURRENT CONTEXT (the nearest numbered node above)
+//@Entry1:Start
+//@->Auth1:Validate token    // Source = Entry1
+//@->Database1:Fetch data    // Source = Entry1
+```
+
+**2. Explicit source (`//@Source->Target:label`)**
+```typescript
+// The source is EXPLICITLY defined
+//@Entry->Auth:Main flow     // Source = Entry group
+//@Auth->Database:Query      // Source = Auth group
+```
+
+### When to use each
+
+| Type | When to use | Example |
+|------|-------------|---------|
+| `//@->Target` | Inside a function/method, connecting from the current step | `//@->Auth1:Authenticate` inside `Entry1` |
+| `//@Source->Target` | Outside any function, connecting groups or explicit flows | `//@Entry->Auth:Main flow` at file level |
+
+### Rule of thumb
+- Inside a method body → use `//@->Target`
+- At class/file level (between groups) → use `//@Source->Target`
 
 ## Conventions and patterns
 
@@ -395,90 +397,164 @@ class AuthService {
 //@Feature1.3        // ❌ Skipped 1.1 and 1.2
 ```
 
-## Common patterns
+## Examples
 
-### HTTP request flow
+See the `examples/` folder for complete, real-world implementations:
+
+| File | Type | Description |
+|------|------|-------------|
+| `01-flowchart-login.ts` | Flowchart | Login flow with auth, 2FA, rate limiting |
+| `02-sequence-api.js` | Sequence | API request/response flow |
+| `03-class-diagram-oop.py` | Class | OOP inheritance and composition |
+| `04-state-machine-login.js` | State | Login state machine with transitions |
+| `05-er-database.sql` | ER | Database entity relationships |
+
+## Step-by-step guide for the agent
+
+### Order of insertion (CRITICAL)
+
+When adding MAD tags to code, follow this EXACT order:
+
+```
+Step 1: Define diagram type on first line
+    //@::graph LR
+
+Step 2: Define GROUPS (simple nodes without numbers)
+    //@Entry
+    //@Auth
+    //@Dashboard
+
+Step 3: Define NUMBERED NODES inside each group
+    //@Entry1:Handle login
+    //@Auth1:Authenticate
+    //@Auth2:Create session
+
+Step 4: Define CONNECTIONS between nodes
+    //@->Auth1:Authenticate       (inside method)
+    //@Entry->Auth:Main flow      (at file level)
+
+Step 5: VALIDATE (see validation flow below)
+    cat /tmp/mad-diagram.mermaid
+```
+
+### Progressive refactoring (recommended approach)
+
+Do NOT add all tags at once. Add them progressively, validating at each step:
+
 ```typescript
+// ITERATION 1: Just the type and groups
 //@::graph LR
-
 //@Entry
-class ApiController {
-  //@Entry1:Receive request
-  handle(req, res) {
-    //@->Middleware1:Validate auth
-    //@->Service1:Process
-    //@->Response1:Return JSON
+//@Auth
+//@Dashboard
+// → Validate: should see 3 groups
+
+// ITERATION 2: Add numbered nodes
+//@Entry1:Handle login
+//@Auth1:Authenticate
+//@Auth2:Create session
+//@Dashboard1:Show dashboard
+// → Validate: should see 4 nodes inside groups
+
+// ITERATION 3: Add connections
+//@->Auth1:Authenticate
+//@->Auth2:Create session
+//@->Dashboard1:Show dashboard
+// → Validate: should see connections between nodes
+
+// ITERATION 4: Add code implementation
+class LoginController {
+  async login() {
+    //@->Auth1:Authenticate
+    await auth.authenticate();
   }
 }
-
-//@Middleware
-class AuthMiddleware {
-  //@Middleware1:Verify JWT
-}
-
-//@Service
-class BusinessService {
-  //@Service1:Execute logic
-}
-
-//@Response
-class ResponseHandler {
-  //@Response1:Format output
-}
+// → Validate: final diagram complete
 ```
 
-### State cycle
+### How to decide where to place each tag
+
+| Tag type | Placement | Example |
+|----------|-----------|---------|
+| `//@Group` | Above class/group definition | `//@Auth` above `class AuthService` |
+| `//@Group1:Label` | Above method/function | `//@Auth1:Login` above `async login()` |
+| `//@Group1.1:Label` | Inside method, above specific step | `//@Auth1.1:Verify 2FA` inside `login()` |
+| `//@->Target:Label` | Inside method, at the point of call | `//@->Dashboard1:Show` where dashboard is called |
+| `//@Source->Target:Label` | At file level, between groups | `//@Entry->Auth:Main flow` |
+
+## Validation flow (for AI agents)
+
+When you insert or modify MAD tags, you MUST validate the generated diagram by following this flow:
+
+### How the validation works
+
+1. You insert/modify `//@` tags in the code
+2. Save the file (the user can do `Cmd+S` or you can request them to save)
+3. The VS Code extension automatically detects the save and generates the Mermaid diagram
+4. The diagram is saved to `/tmp/mad-diagram.mermaid` (always overwritten, never duplicated)
+5. **YOU read this file** to validate the result:
+   ```bash
+   cat /tmp/mad-diagram.mermaid
+   ```
+6. Verify the diagram matches what the tags should produce
+7. If incorrect: adjust the tags, save again, and re-validate
+8. If correct: deliver the final tags + validated diagram
+
+### File location
+
+| Aspect | Detail |
+|--------|--------|
+| Path | `/tmp/mad-diagram.mermaid` |
+| Type | Single file, always **overwritten** (not duplicated) |
+| Trigger | Auto-generated on file save (`onDidSaveTextDocument`) |
+| Generator | VS Code extension command `mad.generateDiagram` |
+| Extension | Updates automatically without your intervention |
+
+### What TO DO
+
 ```typescript
-//@::stateDiagram-v2
-
-//@Idle
-class IdleState {
-  //@Idle1:Waiting for event
-}
-
-//@Processing
-class ProcessingState {
-  //@Processing1:Working
-  work() {
-    //@->Idle:Completed
-    //@->Error:Failed
-  }
-}
-
-//@Error
-class ErrorState {
-  //@Error1:Log error
-  handle() {
-    //@->Idle:Retry
-  }
-}
-
-//@Idle->Processing:Start
-//@Processing->Error:Exception
-//@Error->Idle:Recover
+// 1. Insert/modify MAD tags in the code
+// 2. Save the file (request user to save if needed)
+// 3. Read the generated diagram:
+//    cat /tmp/mad-diagram.mermaid
+// 4. Validate the output
+// 5. If wrong → adjust tags → save again → re-validate
+// 6. If correct → deliver tags + diagram
 ```
 
-### Complex relationships (ER)
-```sql
---@::erDiagram
+### What NOT TO DO
 
---@User
-CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(150));
+- ❌ Do NOT create or maintain a separate validation script
+- ❌ Do NOT try to generate diagrams manually (the extension does it automatically)
+- ❌ Do NOT look for the diagram anywhere else (it's always at `/tmp/mad-diagram.mermaid`)
+- ❌ Do NOT use `Date.now()` or timestamps — use the fixed path to avoid duplicates
 
---@Order
-CREATE TABLE orders (id INT PRIMARY KEY, user_id INT);
+### Iterative refinement loop
 
---@Product
-CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(250));
+When the diagram doesn't match expectations:
 
---@OrderItem
-CREATE TABLE order_items (id INT PRIMARY KEY, order_id INT, product_id INT);
-
--- Relationships
---@User||--o{Order:places
---@Order||--|{OrderItem:contains
---@Product||--o{OrderItem:references
 ```
+1. Identify what's missing or incorrect in the output
+2. Fix the related `//@` tags in the source code
+3. Save the file (Cmd+S)
+4. Read the updated diagram: cat /tmp/mad-diagram.mermaid
+5. Verify again
+6. Repeat until the diagram is correct
+```
+
+### After completion (self-validation)
+
+After finishing a task with MAD tags, the agent MUST validate its own work:
+
+1. Read `/tmp/mad-diagram.mermaid`
+2. Verify:
+   - All groups are present
+   - All numbered nodes are present
+   - All connections are correct
+   - Labels match the intended meaning
+   - Flow makes logical sense
+3. If anything is wrong, fix the tags and re-validate
+4. Only deliver the result after successful validation
 
 ## Quick checklist
 
@@ -491,3 +567,7 @@ When writing MAD tags, verify:
 - [ ] Labels are short and descriptive?
 - [ ] Flow is clear and concise?
 - [ ] Tagging rules were all followed?
+- [ ] Diagram was validated via `/tmp/mad-diagram.mermaid`?
+- [ ] Diagram matches what the tags should produce?
+- [ ] Followed the order: type → groups → numbered nodes → connections?
+- [ ] Validated progressively (not all at once)?

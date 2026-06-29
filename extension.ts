@@ -152,15 +152,70 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            // Return the code for AI agent
+            // Salva em arquivo fixo em /tmp (sobrescreve sempre)
+            const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
+            const encoder = new TextEncoder();
+            await vscode.workspace.fs.writeFile(outputFile, encoder.encode(result.code));
+            
+            // Salva também o código em globalState para acesso rápido
+            await context.globalState.update('mad.lastDiagramCode', result.code);
+            await context.globalState.update('mad.lastDiagramType', fullId);
+
+            // Retorna caminho do arquivo
             return {
                 success: true,
                 code: result.code,
-                type: fullId
+                type: fullId,
+                file: outputFile.fsPath
             };
         }
     );
     context.subscriptions.push(generateDiagramCommand);
+
+    // ── Auto-generate diagram on save (for AI agent) ──
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument(async (document) => {
+            // Ignora markdown
+            if (document.languageId === 'markdown') return;
+            
+            // Verifica se tem tags MAD
+            const text = document.getText();
+            if (!text.includes('//@') && !text.includes('// @')) return;
+            
+            // Verifica se tem tag de diagrama
+            const firstLine = document.lineAt(0).text;
+            const tagMatch = firstLine.match(/\/\/@::(.+)/);
+            if (!tagMatch) return;
+            
+            try {
+                const fullId = tagMatch[1];
+                const prefix = fullId.split(/[0-9]/)[0];
+                
+                const diagramContext: DiagramCommandContext = {
+                    document: document,
+                    prefix: prefix,
+                    extensionUri: context.extensionUri
+                };
+                
+                const result = generateDiagram(diagramContext);
+                
+                if (result.success) {
+                    // Salva em /tmp/mad-diagram.mermaid
+                    const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
+                    const encoder = new TextEncoder();
+                    await vscode.workspace.fs.writeFile(outputFile, encoder.encode(result.code));
+                    
+                    // Atualiza globalState
+                    await context.globalState.update('mad.lastDiagramCode', result.code);
+                    await context.globalState.update('mad.lastDiagramType', fullId);
+                    
+                    console.log(`MAD: Diagrama gerado automaticamente em ${outputFile.fsPath}`);
+                }
+            } catch (error) {
+                console.error('MAD: Erro ao gerar diagrama automaticamente:', error);
+            }
+        })
+    );
 
     // ── Command: Navigate to specific line ──
     const goToLineCommand = vscode.commands.registerCommand(
