@@ -316,17 +316,35 @@ export function activate(context: vscode.ExtensionContext) {
     const SAVE_COOLDOWN_MS = 1000; // Evita múltiplos saves em rápida sequência
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument(async (document) => {
+            log.info('========================================');
+            log.info(`EVENTO onDidSaveTextDocument DISPARADO!`);
+            log.info(`Arquivo: ${document.fileName}`);
+            log.info(`Language: ${document.languageId}`);
+            log.info(`Uri: ${document.uri.toString()}`);
+            log.info('========================================');
+            
             // Ignora markdown
-            if (document.languageId === 'markdown') return;
+            if (document.languageId === 'markdown') {
+                log.info('Ignorado: é markdown');
+                return;
+            }
             
             // Verifica se tem tags MAD
             const text = document.getText();
-            if (!text.includes('//@') && !text.includes('// @')) return;
+            if (!text.includes('//@') && !text.includes('// @')) {
+                log.info('Ignorado: não tem tags MAD');
+                return;
+            }
             
             // Verifica se tem tag de diagrama na primeira linha
             const firstLine = document.lineAt(0).text;
             const tagMatch = firstLine.match(/\/\/@::(.+)/);
-            if (!tagMatch) return;
+            if (!tagMatch) {
+                log.info('Ignorado: não tem tag de diagrama na primeira linha');
+                return;
+            }
+            
+            log.info(`Tag encontrada: ${tagMatch[1]}`);
             
             // Cooldown para evitar processamento duplicado
             const now = Date.now();
