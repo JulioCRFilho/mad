@@ -76,6 +76,24 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     return handler.execute(context);
 }
 
+/**
+ * Generates the diagram code without displaying it.
+ * Returns the Mermaid code for AI agent validation.
+ * Uses the same pipeline as validateAndDisplayDiagram to avoid divergence.
+ */
+export function generateDiagram(context: DiagramCommandContext): DiagramResult & { code?: string } {
+    const { document } = context;
+
+    // Read the diagram type from the first line
+    const firstLine = document.getText().split(/\r?\n/)[0] || '';
+    const match = firstLine.match(/\/\/@::(.+)/);
+    const diagramType = match ? match[1].trim() : 'flowchart TD';
+
+    // Get the appropriate handler and generate only (no display)
+    const handler = getHandler(diagramType);
+    return handler.generateOnly(context);
+}
+
 // Re-exports individual classes for direct use when needed
 export { FlowchartCommand } from './flowchart-command';
 export { SequenceCommand } from './sequence-command';

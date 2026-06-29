@@ -125,4 +125,46 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
         return { success: true };
     }
+
+    /**
+     * Generates the diagram without displaying it.
+     * Returns the Mermaid code for validation by AI agent.
+     * Uses the EXACT same pipeline as execute() to avoid divergence.
+     */
+    generateOnly(context: DiagramCommandContext): DiagramResult & { code?: string } {
+        const { document, prefix } = context;
+
+        // Step 1: Read diagram type
+        const diagramType = this.readDiagramType(document);
+
+        // Step 1.5: Pre-validation hook
+        this.beforeValidation(document, prefix);
+
+        // Step 2: Validate MAD structure
+        const validation = this.validateMAD(document, prefix);
+        if (!validation.valid) {
+            return { success: false, errorMessage: validation.error };
+        }
+
+        // Step 3: Find and process related tags
+        const relatedTags = this.findTags(document, prefix, diagramType);
+
+        // Step 4: Generate Mermaid code
+        let mermaidCode = this.generateMermaid(relatedTags, diagramType);
+
+        // Step 5: Pre-display hook
+        mermaidCode = this.beforeDisplay(mermaidCode, diagramType);
+
+        // Step 6: Validate Mermaid syntax
+        const mermaidValidation = this.validateMermaid(mermaidCode, diagramType);
+        if (!mermaidValidation.valid) {
+            return {
+                success: false,
+                errorMessage: `Mermaid syntax error:\n${mermaidValidation.error}`
+            };
+        }
+
+        // Return code WITHOUT displaying (no Step 7)
+        return { success: true, code: mermaidCode };
+    }
 }

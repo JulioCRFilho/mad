@@ -29,6 +29,7 @@
 // Re-exports everything from the new index.ts module for compatibility
 export {
     validateAndDisplayDiagram,
+    generateDiagram,
     registerCommandHandler,
     getHandler,
     FlowchartCommand,

@@ -23,4 +23,6 @@ export interface DiagramCommandHandler {
     matches(diagramType: string): boolean;
     /** Executes the complete pipeline: validation, processing and display */
     execute(context: DiagramCommandContext): DiagramResult;
+    /** Generates the diagram without displaying it (for AI agent validation) */
+    generateOnly(context: DiagramCommandContext): DiagramResult & { code?: string };
 }

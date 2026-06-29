@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { MADDecorationManager } from './src/core/ui/decoration-manager';
-import { validateAndDisplayDiagram, DiagramCommandContext } from './src/core/commands/diagram-command';
+import { validateAndDisplayDiagram, generateDiagram, DiagramCommandContext } from './src/core/commands/diagram-command';
 import { MADHoverProvider } from './src/core/ui/hover-provider';
 import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
 import { MADFoldingProvider } from './src/core/ui/folding-provider';
@@ -117,6 +117,50 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
     context.subscriptions.push(showDiagramCommand);
+
+    // ── Command: Generate diagram code (for AI agent validation) ──
+    const generateDiagramCommand = vscode.commands.registerCommand(
+        'mad.generateDiagram',
+        async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showWarningMessage('Nenhum editor ativo.');
+                return;
+            }
+
+            const document = editor.document;
+            const firstLine = document.lineAt(0).text;
+            const tagMatch = firstLine.match(/\/\/@::(.+)/);
+            if (!tagMatch) {
+                vscode.window.showWarningMessage('Arquivo não contém tag de diagrama MAD.');
+                return;
+            }
+
+            const fullId = tagMatch[1];
+            const prefix = fullId.split(/[0-9]/)[0];
+
+            const diagramContext: DiagramCommandContext = {
+                document: document,
+                prefix: prefix,
+                extensionUri: context.extensionUri
+            };
+
+            const result = generateDiagram(diagramContext);
+
+            if (!result.success) {
+                vscode.window.showErrorMessage(result.errorMessage || 'Erro ao gerar diagrama.');
+                return;
+            }
+
+            // Return the code for AI agent
+            return {
+                success: true,
+                code: result.code,
+                type: fullId
+            };
+        }
+    );
+    context.subscriptions.push(generateDiagramCommand);
 
     // ── Command: Navigate to specific line ──
     const goToLineCommand = vscode.commands.registerCommand(
