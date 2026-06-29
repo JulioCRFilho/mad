@@ -124,8 +124,12 @@ class UserService {
 sequenceDiagram
     participant Client
     participant Server
+    Client->>Client: Send request
     Client->>Server: GET /api/users
+    Server->>Server: Process data
 ```
+
+**Note:** Numbered nodes (like `//@Client1`) are rendered as self-messages (auto-messages) from their parent group. This allows you to document each step of a flow within a participant.
 
 ### Class Diagram
 ```python
@@ -243,11 +247,14 @@ class Address {
   //@Address1:__init__
 }
 
-// UML relationships
+// UML relationships (at file level or inside classes)
 //@User-->Address:has              // Association
 //@Customer<|--User:inherits       // Inheritance
 //@Order*--OrderItem:contains      // Composition
 //@CartItem o--Product:references  // Aggregation
+
+// Groups can also have direct connections
+//@User-->Order:places
 ```
 
 **Relationship types:**
@@ -255,6 +262,8 @@ class Address {
 - `<|--` — Inheritance/generalization (empty triangle)
 - `*--` — Composition (filled diamond)
 - `o--` — Aggregation (empty diamond)
+
+**Note:** Relationships can be defined at file level (between groups) or inside class definitions. Both `//@Source-->Target:label` and `//@*--Target` formats are supported.
 
 ### Sequence Diagram connections
 
