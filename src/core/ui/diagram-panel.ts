@@ -42,6 +42,17 @@ export class MADDiagramPanel {
         this._panel = panel;
         this._update(mermaidCode);
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+        
+        // Handle messages from webview
+        this._panel.webview.onDidReceiveMessage(
+            message => {
+                if (message.command === 'close') {
+                    this.dispose();
+                }
+            },
+            null,
+            this._disposables
+        );
     }
 
     private _update(mermaidCode: string) {
@@ -406,8 +417,14 @@ export class MADDiagramPanel {
                 }
             }
             if (e.key === 'Escape') {
-                document.getElementById('searchInput').value = '';
-                filterNodes('');
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput.value) {
+                    searchInput.value = '';
+                    filterNodes('');
+                } else {
+                    // Close the panel if search is empty
+                    vscode.postMessage({ command: 'close' });
+                }
             }
             if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
                 const input = document.getElementById('searchInput');
