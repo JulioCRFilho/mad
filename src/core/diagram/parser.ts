@@ -101,6 +101,20 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
             continue;
         }
 
+        // Checks //@Source->>Target:comment (inline sequence diagram with double arrow)
+        // Ex: //@Client->>Handler:submit-full
+        const arrowInlineSequenceMatch = line.match(/\/\/\s*@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineSequenceMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineSequenceMatch[1]}->${arrowInlineSequenceMatch[2]}`,
+                description: arrowInlineSequenceMatch[3] ? arrowInlineSequenceMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: '->>'
+            });
+            continue;
+        }
+
         // Checks //@Source*--Target:comment (inline classDiagram composition)
         // Ex: //@OnboardingPersonalInfo*--PhoneNumber:contains
         const arrowInlineStarMatch = line.match(/\/\/\s*@([\w.]+)\*--([\w.]+)(?::([^\n]+))?/);

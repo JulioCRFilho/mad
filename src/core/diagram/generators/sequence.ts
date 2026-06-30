@@ -25,7 +25,7 @@ export const sequenceGenerator: DiagramGenerator = {
         // Second pass: process tags in file order
         const sortedByLine = [...tags].sort((a, b) => a.line - b.line);
         for (const tag of sortedByLine) {
-            // Process direct connections: //@Source->Target:label
+            // Process direct connections: //@Source->Target:label or //@Source->>Target:label
             if (tag.id.includes('->')) {
                 const [source, target] = tag.id.split('->');
                 if (source && target) {
@@ -41,6 +41,8 @@ export const sequenceGenerator: DiagramGenerator = {
                         participants.push(targetClean);
                     }
                     
+                    // Use arrowPrefix to determine message type (->> for sequence, -> for others)
+                    const arrowType = tag.connections?.[0]?.arrowPrefix === '->>' ? '->>' : '->>';
                     messages.push({ from: sourceClean, to: targetClean, label: tag.description || tag.label || 'message' });
                 }
                 continue;
