@@ -86,11 +86,11 @@ describe('01 – Flowchart (01-flowchart-login.ts)', () => {
   });
 
   it('contains hierarchy edges', () => {
-    assert.ok(/N\d+ -->\|Authenticate\| N\d+/.test(out),
+    assert.ok(/Entry1 -->\|Authenticate\| Auth1/.test(out),
       'A edge of Authenticate');
-    assert.ok(/N\d+ -->\|Show dashboard\| N\d+/.test(out),
+    assert.ok(/Entry1 -->\|Show dashboard\| Dashboard1/.test(out),
       'A edge of Show dashboard');
-    assert.ok(/N\d+ -->\|Validate code\| N\d+/.test(out),
+    assert.ok(/Entry1 -->\|Validate code\| TwoFactor2/.test(out),
       'A edge of Validate code');
   });
 

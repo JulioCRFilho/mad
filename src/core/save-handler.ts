@@ -102,6 +102,12 @@ export function createSaveHandler(context: vscode.ExtensionContext) {
                 await context.globalState.update('mad.lastDiagramCode', result.code);
                 await context.globalState.update('mad.lastDiagramType', fullId);
                 log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
+                
+                // Notifica sucesso se não houver warnings de validação
+                const validationIssues = validateDiagramCounts(document.getText(), result.code, fullId);
+                if (validationIssues.length === 0) {
+                    vscode.window.showInformationMessage('✅ MAD: Diagrama validado com sucesso!', 'OK');
+                }
                 // Preview não abre mais automaticamente - apenas com clique explícito na TAG
             } else if (!result.success) {
                 const errorMsg = result.errorMessage || 'Erro desconhecido.';

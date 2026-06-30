@@ -49,7 +49,7 @@ export const flowchartGenerator: DiagramGenerator = {
             );
 
             for (const entry of groupEntryNodes) {
-                const nodeId = `N${nodeIndex++}`;
+                const nodeId = entry.id;
                 const safeLabel = entry.label.replace(/"/g, '"').replace(/\n/g, ' ');
                 idToNodeId.set(entry.id, nodeId);
                 mermaid += `        ${nodeId}["${safeLabel}"]\n`;
@@ -60,7 +60,7 @@ export const flowchartGenerator: DiagramGenerator = {
             );
 
             for (const seq of groupSequenceNodes) {
-                const nodeId = `N${nodeIndex++}`;
+                const nodeId = seq.id;
                 const safeLabel = seq.label.replace(/"/g, '"').replace(/\n/g, ' ');
                 idToNodeId.set(seq.id, nodeId);
                 mermaid += `        ${nodeId}["${safeLabel}"]\n`;
