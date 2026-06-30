@@ -34,9 +34,14 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         const normalMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
         const implicitMatch = line.match(/\/\/@->([\w.]+)/);
         const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)/);
-        const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--)([\w.]+)/);
+        const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--|-->)([\w.]+)/);
+        const classInlineMatch = line.match(/\/\/@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)/);
         
-        if (explicitMatch) {
+        if (classInlineMatch) {
+            tagId = `${classInlineMatch[1]}->${classInlineMatch[3]}`;
+            isConnection = true;
+            targetIds.push(classInlineMatch[3]);
+        } else if (explicitMatch) {
             tagId = `${explicitMatch[1]}->${explicitMatch[2]}`;
             isConnection = true;
             targetIds.push(explicitMatch[2]);
