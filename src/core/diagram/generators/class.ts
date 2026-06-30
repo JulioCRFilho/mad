@@ -15,7 +15,7 @@ export const classGenerator: DiagramGenerator = {
             if (!/\d/.test(tag.id)) {
                 if (!classContents.has(tag.id)) classContents.set(tag.id, []);
                 
-                // Processa connections em grupos também
+                // Process connections in groups as well
                 if (tag.connections && tag.connections.length > 0) {
                     for (const conn of tag.connections) {
                         const arrow = conn.arrowPrefix || '-->';

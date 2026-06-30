@@ -2,7 +2,7 @@
   "name": "mad",
   "displayName": "Mermaid Auto-Doccing",
   "description": "Extension to automatically generate documentation from Mermaid diagrams in VS Code.",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -35,12 +35,12 @@
         "mad.disableFormatOnSave": {
           "type": "boolean",
           "default": false,
-          "description": "Desabilita o formatOnSave automaticamente quando arquivos com tags MAD são abertos. Recomendado para evitar que o auto-formatter adicione espaços em `//@`."
+          "description": "Disables automatic formatOnSave when files with MAD tags are opened. Recommended to prevent the auto-formatter from adding spaces in `//@`."
         },
         "mad.showFormatWarning": {
           "type": "boolean",
           "default": true,
-          "description": "Mostra aviso quando formatOnSave está ativado e pode quebrar as tags MAD."
+          "description": "Shows warning when formatOnSave is enabled and may break MAD tags."
         }
       }
     },
@@ -51,7 +51,7 @@
       },
       {
         "command": "mad.showLogs",
-        "title": "MAD: Mostrar Logs da Extensão"
+        "title": "MAD: Show Extension Logs"
       }
     ]
   },

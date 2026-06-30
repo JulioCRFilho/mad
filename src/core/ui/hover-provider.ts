@@ -17,14 +17,14 @@ export class MADHoverProvider implements vscode.HoverProvider {
             return null;
         }
 
-        // Verifica se a linha tem uma tag //@ válida
+        // Check if the line has a valid //@ tag
         const tagMatch = lineText.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
         if (!tagMatch) return null;
 
         const fullId = tagMatch[1];
         const description = tagMatch[2]?.trim();
 
-        // Extract code line below the tag (pulando outras tags consecutivas)
+        // Extract code line below the tag (skipping other consecutive tags)
         const text = document.getText();
         const lines = text.split(/\r?\n/);
         let codeLine: string | null = null;
@@ -55,7 +55,7 @@ export class MADHoverProvider implements vscode.HoverProvider {
             '🔁 Sequence Node';
         markdownParts.push(`**Type:** ${tagType}`);
 
-        // ID da tag
+        // Tag ID
         markdownParts.push(`**ID:** \`${fullId}\``);
 
         // Inline description if it exists

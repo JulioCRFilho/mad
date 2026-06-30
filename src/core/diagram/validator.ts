@@ -37,13 +37,13 @@ export function validateDiagram(
 
     const declaredIdSet = new Set(declaredIds.keys());
 
-    // 1. Verifica se todos os //@-> apontam para IDs existentes E que são nós válidos (não arrows)
+    // 1. Checks if all //@-> point to existing IDs AND are valid nodes (not arrows)
     for (const node of allNodes) {
         if (node.isArrow) {
             // Skip direct connections (//@Source->Target) - they don't need to be declared
             if (node.id.includes('->')) continue;
             
-            // Verifica se o ID existe
+            // Check if the ID exists
             if (!declaredIdSet.has(node.id)) {
                 errors.push({
                     line: node.line,
@@ -51,7 +51,7 @@ export function validateDiagram(
                     missingId: node.id
                 });
             } else {
-                // Verifica se o ID apontado é um nó normal (não uma arrow/connection)
+                // Check if the pointed ID is a normal node (not an arrow/connection)
                 const targetNode = declaredIds.get(node.id);
                 if (targetNode && targetNode.isArrow) {
                     errors.push({
@@ -64,25 +64,25 @@ export function validateDiagram(
         }
     }
 
-    // 2. Valida hierarquia: para cada sequence node, verifica se o pai imediato existe
+    // 2. Validates hierarchy: for each sequence node, checks if the immediate parent exists
     for (const [id, nodeInfo] of declaredIds) {
         // Only validates nodes with dots (sequence nodes)
         if (!id.includes('.')) continue;
 
-        // Acha o pai imediato (ex: "Login1.1.1" → pai "Login1.1")
+        // Find the immediate parent (ex: "Login1.1.1" → parent "Login1.1")
         const lastDot = id.lastIndexOf('.');
         const parentId = id.substring(0, lastDot);
 
         if (!declaredIdSet.has(parentId)) {
             errors.push({
                 line: nodeInfo.line,
-                message: `"${id}" (linha ${nodeInfo.line + 1}) has parent "${parentId}" which has not been declared. Create //@${parentId} first.`,
+                message: `"${id}" has parent "${parentId}" which has not been declared. Create //@${parentId} first.`,
                 missingId: parentId
             });
         }
     }
 
-    // 3. Valida que todo entry node tem um grupo correspondente
+    // 3. Validates that every entry node has a corresponding group
     for (const [id, nodeInfo] of declaredIds) {
         // Identifies entry node: prefix + integer number (e.g. "Login1", "Signup2")
         const entryMatch = id.match(/^([a-zA-Z_]+)\d+$/);
@@ -92,7 +92,7 @@ export function validateDiagram(
         if (!declaredIdSet.has(groupId)) {
             errors.push({
                 line: nodeInfo.line,
-                message: `"${id}" (linha ${nodeInfo.line + 1}) belongs to group "${groupId}", but the group has not been declared. Create //@${groupId} first.`,
+                message: `"${id}" belongs to group "${groupId}", but the group has not been declared. Create //@${groupId} first.`,
                 missingId: groupId
             });
         }

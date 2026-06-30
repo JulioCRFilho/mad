@@ -54,13 +54,13 @@ export function findRetroNodeForLine(
     forwardLine: number,
     arrowPrefix?: string
 ): { id: string; line: number } | null {
-    // Para classDiagram connections (*--, <|--, o--), associa ao grupo pai
-    // em vez do entry node mais próximo
+    // For classDiagram connections (*--, <|--, o--), associates with the parent group
+    // instead of the closest entry node
     if (arrowPrefix && ['*--', '<|--', 'o--'].includes(arrowPrefix)) {
         let closestGroup: { id: string; line: number } | null = null;
         for (const retro of retroNodes) {
             if (retro.line < forwardLine && (!closestGroup || retro.line > closestGroup.line)) {
-                // Apenas grupos (sem números)
+                // Only groups (no numbers)
                 if (!/\d/.test(retro.id)) {
                     closestGroup = { id: retro.id, line: retro.line };
                 }
@@ -132,8 +132,8 @@ export function processRetroPointers(
             } else if (isFlowchart && hasDots && node.description) {
                 label = node.description;
             } else if (isEntry && node.description) {
-                // Para entry nodes, prioriza o description (comentário da tag)
-                // sobre o código, para que alterações em comentários atualizem o diagrama
+            // For entry nodes, prioritizes the description (tag comment)
+            // over the code, so that changes in comments update the diagram
                 label = node.description;
             } else {
                 label = fromCode || node.description || node.id;
@@ -191,7 +191,7 @@ function groupConsecutiveForwardPointers(
  * Forward pointers with -> in the ID (e.g. //@Client->Server) are direct connections.
  *
  * Also returns an ordered list of direct connections (by file line)
- * para que generators (como sequence) possam respeitar a ordem original.
+ * so generators (like sequence) can respect the original order.
  */
 export function processForwardPointers(
     document: vscode.TextDocument,
@@ -356,7 +356,7 @@ export function findRelatedTagsWithOrder(
     const allNodes = filterAllNodes(document);
     const { retroPointers, forwardPointers } = splitNodes(allNodes);
 
-    // Processa TODOS os retro pointers (sem filtro de prefixo)
+    // Process ALL retro pointers (no prefix filter)
     const processedRetro = processRetroPointers(document, retroPointers, prefix, diagramType);
     const { syntheticNodes, extraConnections, orderedDirectConnections } = processForwardPointers(document, forwardPointers, processedRetro, prefix);
 

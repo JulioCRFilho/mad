@@ -12,7 +12,7 @@ export interface TagInfo {
 }
 
 /**
- * Valida a estrutura MAD do diagrama
+ * Validates the MAD diagram structure
  */
 export function validateMADStructure(document: import('vscode').TextDocument, prefix: string): ValidationResult {
     const allNodes = filterAllNodes(document);
@@ -20,7 +20,7 @@ export function validateMADStructure(document: import('vscode').TextDocument, pr
 }
 
 /**
- * Parseia todas as tags MAD de um texto
+ * Parses all MAD tags from text
  */
 export function parseAllTags(text: string, lines: string[]): TagInfo[] {
     const allTags: TagInfo[] = [];
@@ -68,10 +68,10 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         
         const tagInfo: TagInfo = { id: tagId, line: i, isConnection, targetIds };
         
-        // Adiciona connections se for um nó com conexões
+        // Add connections if it's a node with connections
         if (!isConnection && normalMatch && normalMatch[2]) {
-            // Aqui poderíamos parsear connections se necessário
-            // Por enquanto, deixamos undefined
+            // We could parse connections here if needed
+            // For now, leave it undefined
         }
         
         allTags.push(tagInfo);
@@ -80,7 +80,7 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
 }
 
 /**
- * Conta elementos (nós e conexões) no código Mermaid
+ * Counts elements (nodes and connections) in Mermaid code
  */
 export function countDiagramElements(mermaidCode: string): { nodes: number; connections: number } {
     let nodes = 0;
@@ -90,14 +90,14 @@ export function countDiagramElements(mermaidCode: string): { nodes: number; conn
         const trimmed = line.trim();
         if (!trimmed) continue;
         
-        // Nós
+        // Nodes
         if (trimmed.startsWith('participant ')) { nodes++; continue; }
         if (/^class\s+\w+/.test(trimmed)) { nodes++; continue; }
         if (trimmed.startsWith('subgraph ')) { nodes++; continue; }
         if (/^state\s+\w+/.test(trimmed) && !trimmed.includes(':')) { nodes++; continue; }
         if (/^\w+\s*\{$/.test(trimmed)) { nodes++; continue; }
         
-        // Conexões - verifica padrões específicos
+        // Connections - checks specific patterns
         // Sequence: Client->>Server: message (participant ->>
         if (/^\s*\w+\s*->>/.test(trimmed)) { connections++; continue; }
         // State/Flowchart: State1 --> State2 : label (palavra -->)
@@ -111,7 +111,7 @@ export function countDiagramElements(mermaidCode: string): { nodes: number; conn
 }
 
 /**
- * Verifica tags soltas (entry nodes sem código abaixo)
+ * Checks for orphan tags (entry nodes without code below)
  */
 export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
     const issues: string[] = [];
@@ -130,14 +130,14 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
         }
         
         if (!hasCode) {
-            issues.push(`Tag solta: ${tag.id} (linha ${tag.line + 1})`);
+            issues.push(`Orphan tag: ${tag.id} (line ${tag.line + 1})`);
         }
     }
     return issues;
 }
 
 /**
- * Verifica conexões apontando para IDs inexistentes
+ * Checks connections pointing to non-existent IDs
  */
 export function findInvalidReferences(allTags: TagInfo[]): string[] {
     const issues: string[] = [];
@@ -146,24 +146,24 @@ export function findInvalidReferences(allTags: TagInfo[]): string[] {
         if (!tag.isConnection) continue;
         for (const targetId of tag.targetIds) {
             if (!validIds.has(targetId)) {
-                issues.push(`Conexão ${tag.id} aponta para ID inexistente: ${targetId}`);
+                issues.push(`Connection ${tag.id} points to non-existent ID: ${targetId}`);
             }
         }
     }
     return issues;
 }
 
-// ── Validações específicas por tipo de diagrama ──
+// ── Diagram type-specific validations ──
 
 function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
-        issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
-        issues.push(`Conexões(${connectionCount}) ≠ Diagrama(${diagramConnections})`);
+        issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
     }
     return issues;
 }
@@ -172,14 +172,14 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
-        issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    // Em sequenceDiagram, tanto conexões explícitas quanto entry nodes viram mensagens
+    // In sequenceDiagram, both explicit connections and entry nodes become messages
     const explicitConnections = allTags.filter(t => t.isConnection).length;
     const entryNodes = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id)).length;
     const expectedConnections = explicitConnections + entryNodes;
     if (expectedConnections !== diagramConnections) {
-        issues.push(`Conexões(${expectedConnections}) ≠ Diagrama(${diagramConnections})`);
+        issues.push(`Connections(${expectedConnections}) ≠ Diagram(${diagramConnections})`);
     }
     return issues;
 }
@@ -188,25 +188,25 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
-        issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     
-    // Simula o que o generator faz para contar conexões esperadas
+    // Simulates what the generator does to count expected connections
     const tagNodes = allTags.filter(t => !t.isConnection);
     const groups = tagNodes.filter(t => !/\d/.test(t.id));
     const numbered = tagNodes.filter(t => /\d/.test(t.id));
     const entryNodes = numbered.filter(t => /^[a-zA-Z]+[0-9]+$/.test(t.id));
     const sequenceNodes = numbered.filter(t => /\.[0-9]/.test(t.id));
     
-    // Conta conexões únicas que o generator irá criar
+    // Counts unique connections that the generator will create
     const edges = new Set<string>();
     
-    // 1. Conexões implícitas de sequence nodes (linhas 97-109 do generator)
+    // 1. Implicit connections from sequence nodes (lines 97-109 of the generator)
     for (const seq of sequenceNodes) {
         const lastDot = seq.id.lastIndexOf('.');
         if (lastDot > 0) {
             const parentId = seq.id.substring(0, lastDot);
-            // Verifica se parentId existe como grupo ou node
+            // Check if parentId exists as a group or node
             const parentExists = groups.some(g => g.id === parentId) || 
                                 numbered.some(n => n.id === parentId);
             if (parentExists) {
@@ -216,12 +216,12 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         }
     }
     
-    // 2. Conexões explícitas das tags (linhas 111-120 do generator)
-    // No flowchart, as conexões são tags do tipo //@->Target ou //@Source->Target
+    // 2. Explicit connections from tags (lines 111-120 of the generator)
+    // In flowchart, connections are tags of type //@->Target or //@Source->Target
     const connectionTags = allTags.filter(t => t.isConnection);
     for (const conn of connectionTags) {
-        // Extrai source e target da tag
-        // Formato: "Source->Target" ou "->Target"
+        // Extract source and target from tag
+        // Format: "Source->Target" or "->Target"
         if (conn.id.includes('->')) {
             const key = conn.id;
             edges.add(key);
@@ -230,7 +230,7 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     
     const expectedConnections = edges.size;
     if (expectedConnections !== diagramConnections) {
-        issues.push(`Conexões(${expectedConnections}) ≠ Diagrama(${diagramConnections})`);
+        issues.push(`Connections(${expectedConnections}) ≠ Diagram(${diagramConnections})`);
     }
     
     return issues;
@@ -240,11 +240,11 @@ function validateStateDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
-        issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
-        issues.push(`Conexões(${connectionCount}) ≠ Diagrama(${diagramConnections})`);
+        issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
     }
     return issues;
 }
@@ -253,18 +253,18 @@ function validateERDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagr
     const issues: string[] = [];
     const expectedNodes = allTags.filter(t => !t.isConnection).length;
     if (expectedNodes !== diagramNodes) {
-        issues.push(`Tags(${expectedNodes}) ≠ Diagrama(${diagramNodes})`);
+        issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
-        issues.push(`Conexões(${connectionCount}) ≠ Diagrama(${diagramConnections})`);
+        issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
     }
     return issues;
 }
 
 /**
- * Valida se o diagrama gerado tem a mesma quantidade de elementos que as tags MAD
- * Retorna array de issues (vazio = tudo ok)
+ * Validates if the generated diagram has the same number of elements as the MAD tags
+ * Returns array of issues (empty = all ok)
  */
 export function validateDiagramCounts(
     documentText: string,

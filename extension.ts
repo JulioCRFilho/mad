@@ -18,23 +18,23 @@ function isMarkdownDocument(document: vscode.TextDocument): boolean {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    log.info('Extensão ativada');
+    log.info('Extension activated');
     
-    // Limpa o arquivo de diagrama ao iniciar
+    // Clears the diagram file on startup
     const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
     try {
         await vscode.workspace.fs.delete(outputFile);
-        log.info('Arquivo de diagrama limpo na ativação');
+        log.info('Diagram file cleared on activation');
     } catch (error) {
-        // Ignora erro se arquivo não existir
+        // Ignore error if file doesn't exist
     }
     
-    // Log de ativação (limpo para produção)
-    log.info('Extensão ativada - Pronta para gerar diagramas');
+    // Activation log (clean for production)
+    log.info('Extension activated - Ready to generate diagrams');
     
-    // Notificação visual para confirmar ativação
-    vscode.window.showInformationMessage('🚀 MAD ativada! Verifique o Output Channel "MAD - Mermaid Auto-Doccing"', 'OK').then(() => {
-        log.info('MAD: Notificação de ativação clicada');
+    // Visual notification to confirm activation
+    vscode.window.showInformationMessage('🚀 MAD activated! Check the Output Channel "MAD - Mermaid Auto-Doccing"', 'OK').then(() => {
+        log.info('MAD: Activation notification clicked');
     });
 
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
@@ -55,11 +55,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const showWarning = vscode.workspace.getConfiguration('mad').get<boolean>('showFormatWarning', true);
         if (showWarning && formatOnSave) {
             vscode.window.showWarningMessage(
-                '⚠️ O auto-formatter está ativado (formatOnSave) e pode quebrar as tags MAD. ' +
-                'Use o comando "MAD: Configurar Auto-Formatter" para desabilitá-lo automaticamente.',
-                'Configurar Agora'
+                '⚠️ The auto-formatter is enabled (formatOnSave) and may break MAD tags. ' +
+                'Use the "MAD: Configure Auto-Formatter" command to disable it automatically.',
+                'Configure Now'
             ).then(selection => {
-                if (selection === 'Configurar Agora') {
+                if (selection === 'Configure Now') {
                     vscode.commands.executeCommand('mad.configureFormatter');
                 }
             });
@@ -94,19 +94,19 @@ export async function activate(context: vscode.ExtensionContext) {
             const currentFormatOnSave = config.get<boolean>('formatOnSave', false);
 
             if (!currentFormatOnSave) {
-                vscode.window.showInformationMessage('✅ formatOnSave já está desabilitado. Nenhuma ação necessária.');
+                vscode.window.showInformationMessage('✅ formatOnSave is already disabled. No action needed.');
                 return;
             }
 
             const choice = await vscode.window.showWarningMessage(
-                'Isso irá desabilitar o formatOnSave no seu workspace para evitar que o auto-formatter quebre as tags MAD. Continuar?',
-                'Sim, desabilitar',
-                'Cancelar'
+                'This will disable formatOnSave in your workspace to prevent the auto-formatter from breaking MAD tags. Continue?',
+                'Yes, disable',
+                'Cancel'
             );
 
-            if (choice === 'Sim, desabilitar') {
+            if (choice === 'Yes, disable') {
                 await config.update('formatOnSave', false, vscode.ConfigurationTarget.Workspace);
-                vscode.window.showInformationMessage('✅ formatOnSave desabilitado com sucesso! Suas tags MAD estão protegidas.');
+                vscode.window.showInformationMessage('✅ formatOnSave disabled successfully! Your MAD tags are protected.');
             }
         }
     );
@@ -148,7 +148,7 @@ export async function activate(context: vscode.ExtensionContext) {
         async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
-                vscode.window.showWarningMessage('Nenhum editor ativo.');
+                vscode.window.showWarningMessage('No active editor.');
                 return;
             }
 
@@ -156,7 +156,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const firstLine = document.lineAt(0).text;
             const tagMatch = firstLine.match(/\/\/@::(.+)/);
             if (!tagMatch) {
-                vscode.window.showWarningMessage('Arquivo não contém tag de diagrama MAD.');
+                vscode.window.showWarningMessage('File does not contain MAD diagram tag.');
                 return;
             }
 
@@ -172,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const result = generateDiagram(diagramContext);
 
             if (!result.success) {
-                const errorMsg = result.errorMessage || 'Erro ao gerar diagrama.';
+                const errorMsg = result.errorMessage || 'Error generating diagram.';
                 vscode.window.showErrorMessage(errorMsg);
                 await saveToOutputFile(`ERROR: ${errorMsg}`);
                 return;
@@ -228,7 +228,7 @@ export async function activate(context: vscode.ExtensionContext) {
         'mad.showLogs',
         () => {
             getOutputChannel().show();
-            vscode.window.showInformationMessage('📋 Logs da extensão MAD abertos!');
+            vscode.window.showInformationMessage('📋 MAD extension logs opened!');
         }
     );
     context.subscriptions.push(showLogsCommand);
@@ -253,11 +253,11 @@ export async function activate(context: vscode.ExtensionContext) {
             const msg = [
                 `**📊 MAD Stats**`,
                 ``,
-                `**Tipo:** \`${diagramType}\``,
-                `**Total de tags:** ${allNodes.length}`,
+                `**Type:** \`${diagramType}\``,
+                `**Total tags:** ${allNodes.length}`,
                 ``,
-                `**Declarados:** ${declared.length}`,
-                `  ┣ Grupos: ${groups.length}`,
+                `**Declared:** ${declared.length}`,
+                `  ┣ Groups: ${groups.length}`,
                 `  ┣ Entry Nodes: ${entries.length}`,
                 `  ┗ Sequence Nodes: ${sequences.length}`,
                 `**Forward Pointers:** ${forward.length}`,
@@ -268,14 +268,14 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showStatsCommand);
 
-    // ── Hover Provider: tooltip com informações da tag ──
+    // ── Hover Provider: tooltip with tag information ──
     const hoverProvider = vscode.languages.registerHoverProvider(
         SUPPORTED_LANGUAGES,
         new MADHoverProvider()
     );
     context.subscriptions.push(hoverProvider);
 
-    // ── FoldingRange Provider: esconder/expandir blocos de tags ──
+    // ── FoldingRange Provider: hide/expand tag blocks ──
     context.subscriptions.push(
         vscode.languages.registerFoldingRangeProvider(
             SUPPORTED_LANGUAGES,
@@ -283,7 +283,7 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // ── Comando: Colapsar todas as tags ──
+    // ── Command: Fold all tags ──
     const foldAllTagsCommand = vscode.commands.registerCommand(
         'mad.foldAllTags',
         () => {
@@ -294,21 +294,21 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(foldAllTagsCommand);
 
-    // ── Comando: Expandir todas as tags ──
+    // ── Command: Unfold all tags ──
     const unfoldAllTagsCommand = vscode.commands.registerCommand(
         'mad.unfoldAllTags',
         () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
             vscode.commands.executeCommand('editor.unfoldAllMarkerRegions');
-            // Marca cooldown de 5 minutos para este arquivo
+            // Mark 5-minute cooldown for this file
             const fileKey = editor.document.uri.toString();
             unfoldCooldowns.set(fileKey, Date.now() + 5 * 60 * 1000);
         }
     );
     context.subscriptions.push(unfoldAllTagsCommand);
 
-    // ── Auto-fold tags ao abrir arquivo (com cooldown de 5min após unfold) ──
+    // ── Auto-fold tags when opening file (with 5min cooldown after unfold) ──
     const unfoldCooldowns = new Map<string, number>();
 
     context.subscriptions.push(
@@ -336,7 +336,7 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Limpa cooldowns antigos (mais de 10 minutos)
+    // Clean up old cooldowns (older than 10 minutes)
     const cleanupInterval = setInterval(() => {
         const now = Date.now();
         for (const [key, cooldown] of unfoldCooldowns.entries()) {
@@ -355,7 +355,7 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // ── Click detection to open diagram (apenas clique exato na tag) ──
+    // ── Click detection to open diagram (only exact click on tag) ──
     let lastClickLine = -1;
     let lastClickTime = 0;
     const CLICK_THROTTLE_MS = 300;
@@ -365,13 +365,13 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!editor) return;
         if (isMarkdownDocument(editor.document)) return;
 
-        // Early return: se o preview já está aberto, não faz nada
+        // Early return: if preview is already open, do nothing
         if (MADDiagramPanel.currentPanel) {
             return;
         }
 
         const selection = editor.selection;
-        // Só processa se for seleção de linha única (não range)
+        // Only process if it's a single line selection (not a range)
         if (!selection.isEmpty || selection.start.line !== selection.end.line) return;
 
         const currentLine = selection.active.line;
@@ -382,18 +382,18 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
         
-        // Verifica se o cursor está EXATAMENTE em cima da tag
+        // Check if the cursor is EXACTLY on the tag
         const lineText = editor.document.lineAt(currentLine).text;
         const tagMatch = lineText.match(/\/\/\s?@([\w.]+)/);
         if (!tagMatch) return;
         
-        // Verifica se a posição do cursor está DENTRO do texto da tag (mais rigoroso)
+        // Check if the cursor position is WITHIN the tag text (more strict)
         const tagText = tagMatch[0];
         const tagStart = lineText.indexOf(tagText);
         const tagEnd = tagStart + tagText.length;
         const cursorPos = selection.active.character;
         
-        // Só abre se o cursor estiver DENTRO da tag (não antes nem depois)
+        // Only open if the cursor is WITHIN the tag (not before or after)
         if (cursorPos < tagStart || cursorPos > tagEnd) return;
         
         lastClickLine = currentLine;

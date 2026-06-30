@@ -1,4 +1,4 @@
-/** Linguagens suportadas pela extensão MAD (que podem conter tags //@) */
+/** Languages supported by the MAD extension (that can contain //@ tags) */
 export const SUPPORTED_LANGUAGES = [
     { language: 'javascript' },
     { language: 'typescript' },

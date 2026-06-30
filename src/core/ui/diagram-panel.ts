@@ -14,8 +14,8 @@ export class MADDiagramPanel {
         const besideColumn = currentColumn + 1;
 
         if (MADDiagramPanel.currentPanel) {
-            // Se já está aberto, NÃO reabre nem revela
-            // Apenas atualiza o conteúdo silenciosamente
+            // If already open, do NOT reopen or reveal
+            // Just silently update the content
             MADDiagramPanel.currentPanel._update(mermaidCode);
             return;
         }
@@ -27,8 +27,8 @@ export class MADDiagramPanel {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                // Content Security Policy para evitar warnings e melhorar segurança
-                // Permite scripts do CDN do Mermaid e html-to-image
+                // Content Security Policy to avoid warnings and improve security
+                // Allows scripts from Mermaid and html-to-image CDNs
                 localResourceRoots: [
                     vscode.Uri.joinPath(extensionUri, 'assets')
                 ]
@@ -186,7 +186,7 @@ export class MADDiagramPanel {
 <body>
     <div class="toolbar">
         <button onclick="copyToClipboard()" title="Copy Mermaid code">📋 Copy</button>
-        <button class="secondary" onclick="exportAsSVG()" title="Exportar como SVG">📥 SVG</button>
+                <button class="secondary" onclick="exportAsSVG()" title="Export as SVG">📥 SVG</button>
         <button class="secondary" onclick="exportAsPNG()" title="Exportar como PNG">🖼 PNG</button>
         <div class="zoom-controls">
             <button onclick="zoomOut()" title="Zoom out">−</button>
