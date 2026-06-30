@@ -9,6 +9,16 @@ description: Mermaid Auto-Doccing — guides the AI agent in software developmen
 
 MAD transforms `//@` comments into Mermaid code automatically. The parser reads the file, extracts nodes and connections, and generates the final diagram.
 
+**Any modification to a file with MAD tags triggers an automatic update.**  
+When you save the file (Ctrl+S / Cmd+S), the extension:
+1. Detects the save event
+2. Re-parses all `//@` tags in the file
+3. Regenerates the Mermaid diagram
+4. Overwrites `/tmp/mad-diagram.mermaid` with the new version
+5. Validates element counts and prepends warnings if needed
+
+This means you can freely add, remove, or modify any `//@` tags — the diagram will always reflect the latest state after each save. There is no manual trigger needed.
+
 ## Fundamental rules
 
 1. **First line**: `//@::DiagramType` defines the diagram type.
@@ -612,7 +622,7 @@ When you click on a `//@` tag line in the editor, a **preview panel** opens show
 ### What TO DO
 
 ```typescript
-// 1. Insert/modify MAD tags in the code
+// 1. Insert/modify MAD tags in the code (add, remove, or change any //@ tag)
 // 2. Save the file (request user to save if needed)
 // 3. Read the generated diagram:
 //    cat /tmp/mad-diagram.mermaid
@@ -620,6 +630,13 @@ When you click on a `//@` tag line in the editor, a **preview panel** opens show
 // 5. If wrong → adjust tags → save again → re-validate
 // 6. If correct → deliver tags + diagram
 ```
+
+**Any change to the source file triggers regeneration.**  
+You don't need to run any command or trigger anything manually. Just:
+1. Edit the `//@` tags in the source code
+2. Save the file
+3. Read `/tmp/mad-diagram.mermaid` to see the updated diagram
+4. Repeat until the diagram is correct
 
 ### What NOT TO DO
 
