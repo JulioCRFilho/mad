@@ -51,8 +51,24 @@ export function extractSQLBlock(document: vscode.TextDocument, tagLine: number):
 export function findRetroNodeForLine(
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
     document: vscode.TextDocument,
-    forwardLine: number
+    forwardLine: number,
+    arrowPrefix?: string
 ): { id: string; line: number } | null {
+    // Para classDiagram connections (*--, <|--, o--), associa ao grupo pai
+    // em vez do entry node mais próximo
+    if (arrowPrefix && ['*--', '<|--', 'o--'].includes(arrowPrefix)) {
+        let closestGroup: { id: string; line: number } | null = null;
+        for (const retro of retroNodes) {
+            if (retro.line < forwardLine && (!closestGroup || retro.line > closestGroup.line)) {
+                // Apenas grupos (sem números)
+                if (!/\d/.test(retro.id)) {
+                    closestGroup = { id: retro.id, line: retro.line };
+                }
+            }
+        }
+        return closestGroup;
+    }
+
     // Strategy 1: same exact code line
     const codeLine = extractCodeLine(document, forwardLine);
     if (codeLine) {
@@ -185,11 +201,11 @@ export function processForwardPointers(
 ): {
     syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string }> }>;
     extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
-    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number }>;
+    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
 } {
     const syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string }> }> = [];
     const extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }> = [];
-    const orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number }> = [];
+    const orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }> = [];
 
     const regularForward: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
 
@@ -201,7 +217,8 @@ export function processForwardPointers(
                     sourceId: source.trim(),
                     targetId: target.trim(),
                     label: node.description || '',
-                    line: node.line
+                    line: node.line,
+                    arrowPrefix: node.arrowPrefix
                 });
             }
         } else {
@@ -212,7 +229,9 @@ export function processForwardPointers(
     const grouped = groupConsecutiveForwardPointers(regularForward);
 
     for (const group of grouped) {
-        const existingRetro = findRetroNodeForLine(retroNodes, document, group.line);
+        // Pega o arrowPrefix do primeiro item do grupo (todos devem ser iguais)
+        const firstArrowPrefix = group.ids.length > 0 ? group.arrowPrefixes.get(group.ids[0]) : undefined;
+        const existingRetro = findRetroNodeForLine(retroNodes, document, group.line, firstArrowPrefix);
 
         if (existingRetro) {
             for (const targetId of group.ids) {
@@ -292,7 +311,7 @@ export function filterAndSortNodes(
 export interface RelatedTagsResult {
     nodes: ProcessedNode[];
     /** Direct connections (//@Source->Target) in the original file order */
-    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number }>;
+    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
 }
 
 /**
@@ -317,7 +336,7 @@ export function findRelatedTags(
                 c => c.id === conn.targetId && c.label === conn.label
             );
             if (!alreadyPresent) {
-                sourceNode.connections.push({ id: conn.targetId, label: conn.label });
+                sourceNode.connections.push({ id: conn.targetId, label: conn.label, arrowPrefix: conn.arrowPrefix });
             }
         }
     }

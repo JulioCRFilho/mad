@@ -60,6 +60,20 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
             continue;
         }
 
+        // Checks //@->>Target:comment (sequence diagram double arrow)
+        // Ex: //@->>Database:SQL query
+        const arrowDoubleExplicitMatch = line.match(/\/\/\s*@->>([\w.]+)(?::([^\n]+))?/);
+        if (arrowDoubleExplicitMatch) {
+            allNodes.push({
+                line: i,
+                id: arrowDoubleExplicitMatch[1],
+                description: arrowDoubleExplicitMatch[2] ? arrowDoubleExplicitMatch[2].trim() : null,
+                isArrow: true,
+                arrowPrefix: '-->'
+            });
+            continue;
+        }
+
         // Checks //@->Target:comment (explicit forward pointer)
         // Ex: //@->Server:HTTP Request
         const arrowExplicitMatch = line.match(/\/\/\s*@->([\w.]+)(?::([^\n]+))?/);
@@ -83,6 +97,48 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
                 id: `${arrowInlineDoubleMatch[1]}->${arrowInlineDoubleMatch[2]}`,
                 description: arrowInlineDoubleMatch[3] ? arrowInlineDoubleMatch[3].trim() : null,
                 isArrow: true
+            });
+            continue;
+        }
+
+        // Checks //@Source*--Target:comment (inline classDiagram composition)
+        // Ex: //@OnboardingPersonalInfo*--PhoneNumber:contains
+        const arrowInlineStarMatch = line.match(/\/\/\s*@([\w.]+)\*--([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineStarMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineStarMatch[1]}->${arrowInlineStarMatch[2]}`,
+                description: arrowInlineStarMatch[3] ? arrowInlineStarMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: '*--'
+            });
+            continue;
+        }
+
+        // Checks //@Source<|--Target:comment (inline classDiagram inheritance)
+        // Ex: //@Customer<|--User:inherits
+        const arrowInlineInheritMatch = line.match(/\/\/\s*@([\w.]+)<\|--([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineInheritMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineInheritMatch[1]}->${arrowInlineInheritMatch[2]}`,
+                description: arrowInlineInheritMatch[3] ? arrowInlineInheritMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: '<|--'
+            });
+            continue;
+        }
+
+        // Checks //@Sourceo--Target:comment (inline classDiagram aggregation)
+        // Ex: //@CartItemo--Product:references or //@CartItem o--Product:references
+        const arrowInlineCircleMatch = line.match(/\/\/\s*@([\w.]+)\s*o--([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineCircleMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineCircleMatch[1]}->${arrowInlineCircleMatch[2]}`,
+                description: arrowInlineCircleMatch[3] ? arrowInlineCircleMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: 'o--'
             });
             continue;
         }
