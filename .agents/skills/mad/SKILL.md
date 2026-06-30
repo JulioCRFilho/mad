@@ -565,8 +565,26 @@ Do NOT add tags for multiple diagrams and validate them all at once — only the
 
 **What the agent sees:**
 - If validation passes: silent (logged to output channel)
-- If validation fails: warnings in the output channel (but diagram still works)
+- If validation fails: **warnings appear at the TOP of `/tmp/mad-diagram.mermaid`** (but diagram still works below)
 - The agent can check `/tmp/mad-diagram.mermaid` visually
+
+**Validation header format (when issues exist):**
+```
+%%% VALIDATION ISSUES (2)
+%%%   - Tags(9) ≠ Diagrama(8)
+%%%   - Conexões(10) ≠ Diagrama(9)
+%%% END VALIDATION
+
+graph LR
+    ...diagram code...
+```
+
+**How to read validation issues:**
+1. Open `/tmp/mad-diagram.mermaid`
+2. If the file starts with `%%% VALIDATION ISSUES`, read the issues listed
+3. Each line starting with `%%%   -` is a specific problem
+4. The actual diagram code starts after `%%% END VALIDATION`
+5. Fix the issues in the source code, save, and re-validate
 
 **Why flowchart connections may differ from tag count:**
 - The flowchart generator **deduplicates** edges (uses a `Set` internally)

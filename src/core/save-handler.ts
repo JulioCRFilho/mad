@@ -16,19 +16,26 @@ export async function saveToOutputFile(content: string, document?: vscode.TextDo
     log.info(`Tamanho do conteúdo: ${content.length} bytes`);
     
     try {
-        const encoder = new TextEncoder();
-        const contentBytes = encoder.encode(content);
-        await vscode.workspace.fs.writeFile(OUTPUT_FILE, contentBytes);
-        log.info(`Arquivo salvo com sucesso: ${outputPath}`);
+        let finalContent = content;
         
+        // Adiciona erros/warnings de validação no TOPO do arquivo
         if (document && diagramType && !content.startsWith('ERROR:')) {
             const issues = validateDiagramCounts(document.getText(), content, diagramType);
             if (issues.length > 0) {
                 log.warn(`Validação: ${issues.join(' | ')}`);
+                const header = `%%% VALIDATION ISSUES (${issues.length})\n` +
+                    issues.map(issue => `%%%   - ${issue}`).join('\n') +
+                    `\n%%% END VALIDATION\n\n`;
+                finalContent = header + content;
             } else {
                 log.info(`Validação OK`);
             }
         }
+        
+        const encoder = new TextEncoder();
+        const contentBytes = encoder.encode(finalContent);
+        await vscode.workspace.fs.writeFile(OUTPUT_FILE, contentBytes);
+        log.info(`Arquivo salvo com sucesso: ${outputPath}`);
         
         return outputPath;
     } catch (error) {
