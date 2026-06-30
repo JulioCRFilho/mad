@@ -102,8 +102,7 @@ export function createSaveHandler(context: vscode.ExtensionContext) {
                 await context.globalState.update('mad.lastDiagramCode', result.code);
                 await context.globalState.update('mad.lastDiagramType', fullId);
                 log.info(`Diagrama gerado com sucesso (${result.code.length} chars)`);
-                
-                MADDiagramPanel.createOrShow(context.extensionUri, result.code);
+                // Preview não abre mais automaticamente - apenas com clique explícito na TAG
             } else if (!result.success) {
                 const errorMsg = result.errorMessage || 'Erro desconhecido.';
                 await saveToOutputFile(`ERROR: ${errorMsg}`);

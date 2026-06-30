@@ -212,7 +212,7 @@ export class MADDiagramPanel {
         const MAX_ZOOM = 3.0;
 
         mermaid.initialize({
-            startOnLoad: true,
+            startOnLoad: false,
             theme: '${isDarkTheme ? 'dark' : 'default'}',
             themeVariables: {
                 primaryColor: '${colors.primary}',
@@ -222,6 +222,11 @@ export class MADDiagramPanel {
                 secondaryColor: '${colors.secondary}',
                 tertiaryColor: '${colors.tertiary}'
             }
+        });
+
+        // Render diagram after webview is fully loaded
+        window.addEventListener('load', async () => {
+            await mermaid.run({ nodes: [document.getElementById('mermaidContent')] });
         });
 
         function setStatus(msg, isError) {

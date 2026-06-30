@@ -387,9 +387,10 @@ export async function activate(context: vscode.ExtensionContext) {
         const tagMatch = lineText.match(/\/\/\s?@([\w.]+)/);
         if (!tagMatch) return;
         
-        // Verifica se a posição do cursor está dentro do range da tag
-        const tagStart = lineText.indexOf(tagMatch[0]);
-        const tagEnd = tagStart + tagMatch[0].length;
+        // Verifica se a posição do cursor está DENTRO do texto da tag (mais rigoroso)
+        const tagText = tagMatch[0];
+        const tagStart = lineText.indexOf(tagText);
+        const tagEnd = tagStart + tagText.length;
         const cursorPos = selection.active.character;
         
         // Só abre se o cursor estiver DENTRO da tag (não antes nem depois)
