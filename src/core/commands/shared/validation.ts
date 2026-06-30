@@ -345,6 +345,34 @@ function validateClassSyntax(lines: string[]): { valid: boolean; error?: string 
             error: 'No classes found. Check the tags.'
         };
     }
+    
+    // Check for empty class definitions (classes with no methods)
+    // Handles both single-line: class Foo { } and multi-line:
+    //    class Foo {
+    //    }
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('class ') && line.includes('{')) {
+            // Found start of class definition
+            const classNameMatch = line.match(/class\s+(\w+)/);
+            if (!classNameMatch) continue;
+            
+            const className = classNameMatch[1];
+            
+            // Check if next non-empty line is closing brace
+            let j = i + 1;
+            while (j < lines.length && lines[j].trim() === '') {
+                j++;
+            }
+            if (j < lines.length && lines[j].trim() === '}') {
+                return {
+                    valid: false,
+                    error: `Empty class definition: "${className}". Class must have at least one method or attribute.`
+                };
+            }
+        }
+    }
+    
     return { valid: true };
 }
 
@@ -381,7 +409,7 @@ function validateERSyntax(lines: string[]): { valid: boolean; error?: string } {
  * Validates the Mermaid syntax based on the diagram type
  */
 export function validateMermaidForType(mermaidCode: string, diagramType: string): { valid: boolean; error?: string } {
-    const lines = mermaidCode.split('\n').filter(l => l.trim() && !l.trim().startsWith('subgraph'));
+    const lines = mermaidCode.split('\n').filter(l => !l.trim().startsWith('subgraph'));
     const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
 
     if (typeKey.startsWith('flowchart') || typeKey.startsWith('graph')) {
