@@ -1,0 +1,62 @@
+skill:
+  name: mad
+  version: 1.0.0
+  description: Generates Mermaid diagrams from code using //@ MAD tags
+
+examples:
+  - name: "01-flowchart-login"
+    description: "Flowchart diagram showing login flow with authentication, 2FA, and error handling"
+    file: "examples/01-flowchart-login.ts"
+    diagram_type: "graph LR"
+    language: "typescript"
+
+  - name: "02-sequence-api"
+    description: "Sequence diagram showing API request flow with authentication, caching, and error handling"
+    file: "examples/02-sequence-api.js"
+    diagram_type: "sequenceDiagram"
+    language: "javascript"
+
+  - name: "03-class-diagram-oop"
+    description: "Class diagram showing OOP relationships including inheritance, composition, and associations"
+    file: "examples/03-class-diagram-oop.py"
+    diagram_type: "classDiagram"
+    language: "python"
+
+  - name: "04-state-machine-login"
+    description: "State machine diagram showing login states and transitions including error states"
+    file: "examples/04-state-machine-login.js"
+    diagram_type: "stateDiagram-v2"
+    language: "javascript"
+
+  - name: "05-er-database"
+    description: "Entity-relationship diagram for e-commerce database with users, orders, products, and payments"
+    file: "examples/05-er-database.sql"
+    diagram_type: "erDiagram"
+    language: "sql"
+
+configuration:
+  output_file: "/tmp/mad-diagram.mermaid"
+  tag_formats:
+    - "//@"
+    - "// @"
+  validation_header: "%%% VALIDATION ISSUES"
+  
+  diagram_types:
+    - "graph LR"
+    - "graph TD"
+    - "flowchart LR"
+    - "flowchart TD"
+    - "sequenceDiagram"
+    - "classDiagram"
+    - "stateDiagram-v2"
+    - "erDiagram"
+
+  coverage_requirements:
+    - "All public and private methods/functions"
+    - "All conditional branches (if/else, switch/case)"
+    - "All error handling paths and exceptions"
+    - "All loops and iterations"
+    - "All API endpoints and their flows"
+    - "All database queries and data transformations"
+    - "All external service calls"
+    - "All state transitions"
