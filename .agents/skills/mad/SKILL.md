@@ -10,6 +10,16 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **File Path**: Generated output is located at `/tmp/mad-diagram.mermaid`.
 *   **Diagram Type Directive**: Add `//@::[type]` anywhere in the file (e.g., `//@::graph LR`). The parser searches all lines and uses `flowchart TD` as fallback if not found.
 *   **Tag Placement**: ⚠️ **CRITICAL** - Place MAD tags as comments **right above** the code line or block they describe. **NEVER group all tags in a header section at the top of the file.** Distribute them throughout the file near the relevant code. Each tag must be directly above its target code.
+*   **100% Flow Coverage**: ⚠️ **CRITICAL** - Document **EVERY** code path, not just some parts. This includes:
+    *   All public and private methods/functions
+    *   All conditional branches (if/else, switch/case)
+    *   All error handling paths and exceptions
+    *   All loops and iterations
+    *   All API endpoints and their flows
+    *   All database queries and data transformations
+    *   All external service calls
+    *   All state transitions
+    *   Incomplete documentation defeats the purpose of MAD diagrams
 *   **Tag Format**: Use `//@` or `// @` (with space) for all MAD tags.
 *   **Self-Correction**: Always `cat /tmp/mad-diagram.mermaid` after saving. If the header `%%% VALIDATION ISSUES` exists, analyze the error, fix the tags, and re-save.
 
@@ -113,6 +123,70 @@ class MyClass {
 }
 ```
 
+### ❌ DON'T: Document only some methods (partial coverage)
+```dart
+//@::graph LR
+//@Auth
+class AuthService {
+  //@Auth1:Login  // ✓ Documented
+  async login() {}
+  
+  async logout() {}  // ❌ Missing tag!
+  
+  //@Auth2:Register  // ✓ Documented
+  async register() {}
+}
+```
+
+### ✅ DO: Document ALL methods (100% coverage)
+```dart
+//@::graph LR
+//@Auth
+class AuthService {
+  //@Auth1:Login
+  async login() {}
+  
+  //@Auth2:Logout  // ✓ Every method documented
+  async logout() {}
+  
+  //@Auth3:Register
+  async register() {}
+}
+```
+
+### ❌ DON'T: Skip error paths and edge cases
+```dart
+//@::graph LR
+//@Payment
+class PaymentService {
+  //@Payment1:Process payment
+  async processPayment() {
+    if (valid) {
+      return await this.charge();
+    }
+    // ❌ Missing: error path not documented
+  }
+}
+```
+
+### ✅ DO: Document all branches and error paths
+```dart
+//@::graph LR
+//@Payment
+class PaymentService {
+  //@Payment1:Process payment
+  async processPayment() {
+    //@->Validation:Validate card
+    if (!valid) {
+      //@->Error:Invalid card
+      throw new Error('Invalid card');
+    }
+    //@->Charge:Process charge
+    return await this.charge();
+  }
+}
+```
+
 ---
 
 ## 4. Agent Execution Checklist
@@ -122,5 +196,6 @@ class MyClass {
     *   ⚠️ **CRITICAL**: Place ALL tags directly above the code they describe
     *   ⚠️ **CRITICAL**: Do NOT group tags in a header section
     *   ⚠️ **CRITICAL**: Place connection tags directly above the group/class definition
+    *   ⚠️ **CRITICAL**: Document 100% of code paths - every method, every branch, every error handler
 4.  **Validate**: Save the file, run `cat /tmp/mad-diagram.mermaid`, and resolve any `%%% VALIDATION ISSUES` immediately.
-5.  **Verify**: Ensure all nodes have connections where appropriate and the diagram tells a complete story.
+5.  **Verify**: Ensure all nodes have connections where appropriate and the diagram tells a complete story with no gaps.
