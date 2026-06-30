@@ -13,7 +13,7 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 
 1. **First line**: `//@::DiagramType` defines the diagram type.
 2. **`//@` comments**: become nodes or connections in the diagram.
-3. **`//` comments without `@`**: Remove.
+3. **`//` comments without `@`**: Remove. Never create plain `//` comments, only `//@`.
 4. **Documentation must stay in code**: NEVER create separate documentation files (`.md`, `.txt`, etc.) outside the source code. Tags are placed over the code they represent.
 
 ## Supported diagram types
@@ -35,6 +35,8 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 ```
 - **Groups**: become `subgraph` in flowchart or classes in classDiagram
 - **Participants**: become participants in sequenceDiagram
+- **States**: become `state` blocks in stateDiagram
+- **Entities**: become entity definitions in erDiagram
 
 ### Numbered nodes
 ```typescript
@@ -48,6 +50,12 @@ MAD transforms `//@` comments into Mermaid code automatically. The parser reads 
 - `Name1.1` → sequence of previous node
 - `Name1.1.2` → third level of depth
 - Nodes are automatically sorted by number
+
+### Synthetic nodes (numbered with underscore)
+```typescript
+//@Node_1            // Synthetic node (for external references)
+```
+Synthetic nodes use underscore + number (`Nome_1`) and are rendered outside any subgraph in flowcharts.
 
 ### Custom labels
 ```typescript
@@ -299,16 +307,23 @@ class ApiClient {
 //@Auth->Database:Query      // Source = Auth group
 ```
 
+**3. Explicit source with double arrow (`//@Source-->Target:label`)**
+```typescript
+// Same as -> but using --> (both are supported)
+//@Entry-->Auth:Main flow    // Source = Entry group
+```
+
 ### When to use each
 
 | Type | When to use | Example |
 |------|-------------|---------|
 | `//@->Target` | Inside a function/method, connecting from the current step | `//@->Auth1:Authenticate` inside `Entry1` |
 | `//@Source->Target` | Outside any function, connecting groups or explicit flows | `//@Entry->Auth:Main flow` at file level |
+| `//@Source-->Target` | Same as above (alternate syntax) | `//@Entry-->Auth:Main flow` |
 
 ### Rule of thumb
 - Inside a method body → use `//@->Target`
-- At class/file level (between groups) → use `//@Source->Target`
+- At class/file level (between groups) → use `//@Source->Target` or `//@Source-->Target`
 
 ## Conventions and patterns
 
@@ -534,6 +549,38 @@ Do NOT add tags for multiple diagrams and validate them all at once — only the
 7. If incorrect: adjust the tags, save again, and re-validate
 8. If correct: **move to the next diagram** (repeat from step 1)
 
+### Automatic validation of element counts
+
+**The extension now validates automatically** that the number of nodes and connections in the generated diagram matches the number of tags in the source code.
+
+**Validations by diagram type:**
+
+| Type | Nodes | Connections |
+|------|-------|-------------|
+| `classDiagram` | Groups (# of `//@Class`) | Explicit connections (`//@-->`, `//@<|--`, etc.) |
+| `sequenceDiagram` | Groups (participants) | Explicit connections + entry nodes (viram self-messages) |
+| `stateDiagram-v2` | Groups (states) | Explicit transitions (`//@->`, `//@Source->Target`) |
+| `erDiagram` | All nodes (entities) | Explicit connections |
+| `flowchart/graph` | Groups (subgraphs) | Unique connections (deduplicadas) |
+
+**What the agent sees:**
+- If validation passes: silent (logged to output channel)
+- If validation fails: warnings in the output channel (but diagram still works)
+- The agent can check `/tmp/mad-diagram.mermaid` visually
+
+**Why flowchart connections may differ from tag count:**
+- The flowchart generator **deduplicates** edges (uses a `Set` internally)
+- Duplicate `//@->Target` tags pointing to the same source produce only one edge
+- Example: 9 connection tags but only 8 edges in the diagram due to dedup
+
+### Preview panel (VS Code)
+
+When you click on a `//@` tag line in the editor, a **preview panel** opens showing the rendered Mermaid diagram. This is useful for visual validation directly in the IDE.
+
+- The preview only opens on **mouse click exactly on the tag** (not keyboard navigation)
+- If the preview is already open, it won't re-open (early return)
+- Close the preview panel manually to allow re-opening
+
 ### File location
 
 | Aspect | Detail |
@@ -605,3 +652,4 @@ When writing MAD tags, verify:
 - [ ] Diagram matches what the tags should produce?
 - [ ] Followed the order: type → groups → numbered nodes → connections?
 - [ ] Validated progressively (not all at once)?
+- [ ] For flowchart: deduplication of edges is accounted for?
