@@ -1,584 +1,123 @@
----
-name: mad
-description: Mermaid Auto-Doccing — guides the AI agent in software development with MAD tags, generating Mermaid diagrams from //@ comments in code.
----
-
 # MAD — Mermaid Auto-Doccing
 
-## How it works
+## O que é
 
-MAD transforms `//@` comments into Mermaid code automatically. The parser reads the file, extracts nodes and connections, and generates the final diagram.
+Extensão VS Code que transforma comentários `//@` em diagramas Mermaid automaticamente.
 
-**Any modification to a file with MAD tags triggers an automatic update.**  
-When you save the file (Ctrl+S / Cmd+S), the extension:
-1. Detects the save event
-2. Re-parses all `//@` tags in the file
-3. Regenerates the Mermaid diagram
-4. Overwrites `/tmp/mad-diagram.mermaid` with the new version
-5. Validates element counts and prepends warnings if needed
+## Como funciona
 
-This means you can freely add, remove, or modify any `//@` tags — the diagram will always reflect the latest state after each save. There is no manual trigger needed.
+1. Você edita tags `//@` no código
+2. Salva o arquivo (Ctrl+S / Cmd+S)
+3. Extensão detecta o save, re-parseia tudo, regenera o diagrama
+4. Diagrama é salvo em `/tmp/mad-diagram.mermaid`
+5. Você valida o resultado
 
-## Fundamental rules
+**Não há comandos manuais.** Qualquer alteração nas tags + save = diagrama atualizado.
 
-1. **First line**: `//@::DiagramType` defines the diagram type.
-2. **`//@` comments**: become nodes or connections in the diagram.
-3. **`//` comments without `@`**: Remove. Never create plain `//` comments, only `//@`.
-4. **Documentation must stay in code**: NEVER create separate documentation files (`.md`, `.txt`, etc.) outside the source code. Tags are placed over the code they represent.
+## Regras fundamentais
 
-## Supported diagram types
+1. **Primeira linha**: `//@::DiagramType` (ex: `//@::graph LR`)
+2. **Tags `//@`**: viram nós ou conexões
+3. **Tags sem `@`**: REMOVA (não use `//` puro)
+4. **Documentação no código**: NUNCA crie arquivos `.md` externos
 
-```typescript
-//@::graph LR          // Flowchart (left → right)
-//@::graph TD          // Flowchart (top → bottom)
-//@::sequenceDiagram   // Sequence diagram
-//@::classDiagram      // Class diagram
-//@::stateDiagram-v2   // State machine
-//@::erDiagram         // Entity-relationship diagram
-```
-
-## Naming system
-
-### Simple nodes (without numbers)
-```typescript
-//@Auth        // Group/class without numbering
-```
-- **Groups**: become `subgraph` in flowchart or classes in classDiagram
-- **Participants**: become participants in sequenceDiagram
-- **States**: become `state` blocks in stateDiagram
-- **Entities**: become entity definitions in erDiagram
-
-### Numbered nodes
-```typescript
-//@Auth1             // First step of Auth group
-//@Auth1.1           // Sub-step of Auth1
-//@Auth1.1.2         // Sub-sub-step
-```
-
-**Numbering rules:**
-- `Name1` → entry node (first level)
-- `Name1.1` → sequence of previous node
-- `Name1.1.2` → third level of depth
-- Nodes are automatically sorted by number
-
-### Synthetic nodes (numbered with underscore)
-```typescript
-//@Node_1            // Synthetic node (for external references)
-```
-Synthetic nodes use underscore + number (`Nome_1`) and are rendered outside any subgraph in flowcharts.
-
-### Custom labels
-```typescript
-//@Auth1:Authenticate user    // Node with custom label
-//@Auth1.1:Verify 2FA         // Sub-step with label
-```
-
-## Defining nodes
-
-### Rule
-```
-| Tags |  Description | 
-|:---|---:|
-| //@ | defines a node with ID and optional label |
-| //@-> | defines an arrow pointing to a node using it's ID | 
-
-`TAG+ID:Label` → defines a node with ID `ID` and label `Label`.
-
-Examples:
-  `//@Login1:Receive request` → Node ID: `Login1`, Label: `Receive request`
-  `//@->Auth1:Authenticate` → Connection from current context to node `Auth1` with label `Authenticate`
-```
-
-### Flowchart
-```typescript
-//@::graph LR
-
-//@Entry                    // Root group
-class LoginController {
-  //@Entry1:Receive request    // Node inside group
-  async login() {
-    //@->Auth1:Authenticate    // Connection (see Connections section)
-  }
-}
-
-//@Auth                     // Another group
-class AuthService {
-  //@Auth1:Validate credentials
-}
-```
-
-**Generates:**
-```mermaid
-graph LR
-    subgraph Entry
-        N0["Receive request"]
-    end
-    subgraph Auth
-        N1["Validate credentials"]
-    end
-    N0 -->|Authenticate| N1
-```
-
-### Sequence Diagram
-```typescript
-//@::sequenceDiagram
-
-//@Client
-class ApiClient {
-  //@Client1:Send request
-  async fetch() {
-    //@->Server:GET /api/users
-  }
-}
-
-//@Server
-class UserService {
-  //@Server1:Process data
-}
-```
-
-**Generates:**
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Server
-    Client->>Client: Send request
-    Client->>Server: GET /api/users
-    Server->>Server: Process data
-```
-
-**Note:** Numbered nodes (like `//@Client1`) are rendered as self-messages (auto-messages) from their parent group. This allows you to document each step of a flow within a participant.
-
-### Class Diagram
-```python
-#@::classDiagram
-
-#@User
-class User:
-    #@User1:__init__
-    def __init__(self, name):
-        pass
-    
-    #@User1.1:get_name
-    def get_name(self):
-        pass
-
-#@Customer
-class Customer(User):
-    #@<|--User:inherits from
-    #@Customer1:__init__
-```
-
-**Generates:**
-```mermaid
-classDiagram
-    class User {
-        +__init__(name)
-        +get_name()
-    }
-    class Customer {
-        +__init__()
-    }
-    Customer --|> User
-```
-
-### State Diagram
-```typescript
-//@::stateDiagram-v2
-
-//@LoggedOut
-class LoggedOutState {
-  //@LoggedOut1:Show form
-  showForm() {}
-}
-
-//@LoggingIn
-class LoggingInState {
-  //@LoggingIn1:Authenticate
-  authenticate() {
-    //@->LoggedIn:Success
-    //@->LoggedOut:Failure
-  }
-}
-
-//@LoggedIn
-class LoggedInState {
-  //@LoggedIn1:Show dashboard
-}
-
-// Connections between states (outside classes)
-//@LoggedOut->LoggingIn:Submit
-//@LoggingIn->LoggedIn:Auth OK
-//@LoggingIn->LoggedOut:Invalid credentials
-```
-
-**Generates:**
-```mermaid
-stateDiagram-v2
-    [*] --> LoggedOut
-    LoggedOut --> LoggingIn: Submit
-    LoggingIn --> LoggedIn: Auth OK
-    LoggingIn --> LoggedOut: Invalid credentials
-    LoggedIn --> [*]
-```
-
-### ER Diagram
-```sql
---@::erDiagram
-
---@User
-CREATE TABLE users (
-  id INT PRIMARY KEY,
-  name VARCHAR(150)
-);
-
---@Order
-CREATE TABLE orders (
-  id INT PRIMARY KEY,
-  user_id INT
-);
-
--- Relationships (separate lines)
---@User->Order:has
---@Order->User:belongs to
-```
-
-**Generates:**
-```mermaid
-erDiagram
-    User ||--o{ Order : "has"
-    Order }o--|| User : "belongs to"
-```
-
-### Class Diagram connections
+## Tipos de diagrama
 
 ```typescript
-//@::classDiagram
-
-//@User
-class User {
-  //@User1:__init__
-}
-
-//@Address
-class Address {
-  //@Address1:__init__
-}
-
-// UML relationships (at file level or inside classes)
-//@User-->Address:has              // Association
-//@Customer<|--User:inherits       // Inheritance
-//@Order*--OrderItem:contains      // Composition
-//@CartItem o--Product:references  // Aggregation
-
-// Groups can also have direct connections
-//@User-->Order:places
+//@::graph LR          // Flowchart (esquerda → direita)
+//@::graph TD          // Flowchart (topo → baixo)
+//@::sequenceDiagram   // Sequência
+//@::classDiagram      // Classes
+//@::stateDiagram-v2   // Estados
+//@::erDiagram         // Entidade-relacionamento
 ```
 
-**Relationship types:**
-- `-->` — Association (solid line)
-- `<|--` — Inheritance/generalization (empty triangle)
-- `*--` — Composition (filled diamond)
-- `o--` — Aggregation (empty diamond)
+## Sistema de nomes
 
-**Note:** Relationships can be defined at file level (between groups) or inside class definitions. Both `//@Source-->Target:label` and `//@*--Target` formats are supported.
-
-### Sequence Diagram connections
-
+### Grupos (sem números)
 ```typescript
-//@::sequenceDiagram
-
-//@Client
-class ApiClient {
-  //@Client1:Request data
-  async fetch() {
-    //@->Server:Request user       // Standard sync arrow
-    //@->>Database:SQL query       // Sync arrow (same as ->)
-  }
-}
-```
-
-## Connections in detail
-
-### Two types of connections
-
-**1. Implicit source (`//@->Target:label`)**
-```typescript
-// The source is the CURRENT CONTEXT (the nearest numbered node above)
-//@Entry1:Start
-//@->Auth1:Validate token    // Source = Entry1
-//@->Database1:Fetch data    // Source = Entry1
-```
-
-**2. Explicit source (`//@Source->Target:label`)**
-```typescript
-// The source is EXPLICITLY defined
-//@Entry->Auth:Main flow     // Source = Entry group
-//@Auth->Database:Query      // Source = Auth group
-```
-
-**3. Explicit source with double arrow (`//@Source-->Target:label`)**
-```typescript
-// Same as -> but using --> (both are supported)
-//@Entry-->Auth:Main flow    // Source = Entry group
-```
-
-### When to use each
-
-| Type | When to use | Example |
-|------|-------------|---------|
-| `//@->Target` | Inside a function/method, connecting from the current step | `//@->Auth1:Authenticate` inside `Entry1` |
-| `//@Source->Target` | Outside any function, connecting groups or explicit flows | `//@Entry->Auth:Main flow` at file level |
-| `//@Source-->Target` | Same as above (alternate syntax) | `//@Entry-->Auth:Main flow` |
-
-### Rule of thumb
-- Inside a method body → use `//@->Target`
-- At class/file level (between groups) → use `//@Source->Target` or `//@Source-->Target`
-
-## Conventions and patterns
-
-### 1. One node per responsibility
-```typescript
-// ✅ Good
-//@Auth1:Validate credentials
-//@Auth1.1:Verify 2FA
-
-// ❌ Bad
-//@Auth1:Validate credentials AND verify 2FA AND create session
-```
-
-### 2. Short names, descriptive labels
-```typescript
-// ✅ Good
-//@DB1:Fetch user by ID
-
-// ❌ Bad
-//@DatabaseServiceFindUserByIdFromDatabaseWithJoins1
-```
-
-### 3. **CRITICAL: Tags must lead to actual code**
-```typescript
-// ✅ Good - Tags eventually lead to code
-//@Entry
-class LoginController {
-  //@Entry1:Handle login
-  async handleLogin(email, password) {
-    //@->Auth1:Authenticate
-    //@->Auth2:Validate input
-    await auth.authenticate(email, password);
-    //@->Dashboard1:Show dashboard
-    return dashboard.show();
-  }
-}
-
-// ❌ Bad - Tags without any code (floating)
-//@Entry1:Handle login
-//@->Auth1:Authenticate
-//@->Dashboard1:Show dashboard
-// (no actual code below any tag)
-```
-
-**Rule**: Tags can be nested/grouped together, but they MUST eventually be followed by actual code (function body, class definition, etc.). A sequence of tags without any code implementation is invalid. Only one ID Tag is allowed per node.
-
-**Allowed patterns:**
-```typescript
-// ✅ OK - Multiple tags then code
-//@Process1:Validate
-const result = validate(data);
-//@Process2:Transform
-const transformed = transform(result);
-//@Process3:Save
-save(transformed);
-//@Process4:Close
-//@->Process1:Restart
-dispose(result);
-```
-
-```
-// ✅ OK - Tags inside class with implementation
 //@Auth
-class AuthService {
-  //@Auth1:Login
-  //@Auth1.1:Verify 2FA
-  async login() {
-    await verify2FA();
-  }
-}
 ```
+Viram: `subgraph` (flowchart), `class` (classDiagram), `participant` (sequence), `state` (state), entidade (ER)
 
-**Forbidden patterns:**
+### Nós numerados
 ```typescript
-// ❌ BAD - Only tags, no code
-//@Entry1:Start
-//@->Process1:Do something
-//@->Process2:Do something else
-
-// ❌ BAD - Tags at file level without context
-//@Auth1:Login
-//@Auth2:Logout
-// (no class/function containing these tags)
+//@Auth1:Label           // Entry node (nível 1)
+//@Auth1.1:Label         // Sub-step (nível 2)
+//@Auth1.1.2:Label       // Sub-sub-step (nível 3)
+//@Node_1:Label          // Synthetic node (underscore)
 ```
 
-### 4. Number hierarchy
+**Regras de numeração:**
+- `Name1` → entry node
+- `Name1.1` → sequence do anterior
+- `Name1.1.1` → terceiro nível
+- `Name_1` → synthetic (fora de subgraphs)
+- Ordenados automaticamente por número
+
+## Tags suportadas
+
+### Nós
 ```typescript
-// Correct structure:
-//@Feature1          // First level
-//@Feature1.1        // Second level (child of Feature1)
-//@Feature1.1.1      // Third level (child of Feature1.1)
-
-// Avoid gaps:
-//@Feature1
-//@Feature1.3        // ❌ Skipped 1.1 and 1.2
+//@Group                    // Grupo simples
+//@Group1:Label             // Entry node com label
+//@Group1.1:Label           // Sub-step
+//@Node_1:Label             // Synthetic node
 ```
 
-## Examples
-
-See the `examples/` folder for complete, real-world implementations:
-
-| File | Type | Description |
-|------|------|-------------|
-| `01-flowchart-login.ts` | Flowchart | Login flow with auth, 2FA, rate limiting |
-| `02-sequence-api.js` | Sequence | API request/response flow |
-| `03-class-diagram-oop.py` | Class | OOP inheritance and composition |
-| `04-state-machine-login.js` | State | Login state machine with transitions |
-| `05-er-database.sql` | ER | Database entity relationships |
-
-## Step-by-step guide for the agent
-
-### Order of insertion (CRITICAL)
-
-When adding MAD tags to code, follow this EXACT order:
-
-```
-Step 1: Define diagram type on first line
-    //@::graph LR
-
-Step 2: Define GROUPS (simple nodes without numbers)
-    //@Entry
-    //@Auth
-    //@Dashboard
-
-Step 3: Define NUMBERED NODES inside each group
-    //@Entry1:Handle login
-    //@Auth1:Authenticate
-    //@Auth2:Create session
-
-Step 4: Define CONNECTIONS between nodes
-    //@->Auth1:Authenticate       (inside method)
-    //@Entry->Auth:Main flow      (at file level)
-
-**IMPORTANT:** the tmp file is created after modifying and saving the source code.
-Step 5: VALIDATE (see validation flow below)
-    cat /tmp/mad-diagram.mermaid
-```
-
-### Progressive refactoring (recommended approach)
-
-Do NOT add all tags at once. Add them progressively, validating at each step:
-
+### Conexões implícitas (source = contexto atual)
 ```typescript
-// ITERATION 1: Just the type and groups
-//@::graph LR
-//@Entry
-//@Auth
-//@Dashboard
-// → Validate: should see 3 groups
-
-// ITERATION 2: Add numbered nodes
-//@Entry1:Handle login
-//@Auth1:Authenticate
-//@Auth2:Create session
-//@Dashboard1:Show dashboard
-// → Validate: should see 4 nodes inside groups
-
-// ITERATION 3: Add connections
-//@->Auth1:Authenticate
-//@->Auth2:Create session
-//@->Dashboard1:Show dashboard
-// → Validate: should see connections between nodes
-
-// ITERATION 4: Add code implementation
-class LoginController {
-  async login() {
-    //@->Auth1:Authenticate
-    await auth.authenticate();
-  }
-}
-// → Validate: final diagram complete
+//@->Target:Label           // Dentro de método, conecta ao nó acima
 ```
 
-### How to decide where to place each tag
-
-| Tag type | Placement | Example |
-|----------|-----------|---------|
-| `//@Group` | Above class/group definition | `//@Auth` above `class AuthService` |
-| `//@Group1:Label` | Above method/function | `//@Auth1:Login` above `async login()` |
-| `//@Group1.1:Label` | Inside method, above specific step | `//@Auth1.1:Verify 2FA` inside `login()` |
-| `//@->Target:Label` | Inside method, at the point of call | `//@->Dashboard1:Show` where dashboard is called |
-| `//@Source->Target:Label` | At file level, between groups | `//@Entry->Auth:Main flow` |
-
-## Validation flow (for AI agents)
-
-When you insert or modify MAD tags, you MUST validate the generated diagram by following this flow:
-
-### CRITICAL: One diagram at a time
-
-**The file `/tmp/mad-diagram.mermaid` is ALWAYS overwritten on each save.**  
-This means you **MUST validate one diagram completely before moving to the next**.  
-Do NOT add tags for multiple diagrams and validate them all at once — only the last saved diagram will be in the file.
-
-**Correct workflow:**
-```
-1. Add tags for Diagram A
-2. Save → validate /tmp/mad-diagram.mermaid (shows Diagram A)
-3. If OK → mark Diagram A as complete
-4. Add tags for Diagram B
-5. Save → validate /tmp/mad-diagram.mermaid (now shows Diagram B)
-6. If OK → mark Diagram B as complete
-7. Continue...
+### Conexões explícitas (source definido)
+```typescript
+//@Source->Target:Label     // Com source explícito
+//@Source-->Target:Label    // Mesmo que acima (--> é alias)
 ```
 
-**Wrong workflow:**
+### ClassDiagram (setas UML)
+```typescript
+//@Source-->Target:Label    // Associação (linha sólida)
+//@Source<|--Target:Label   // Herança (triângulo vazio)
+//@Source*--Target:Label    // Composição (diamante cheio)
+//@Sourceo--Target:Label    // Agregação (diamante vazio)
+//@<|--Target:Label         // Herança (sem source, usa grupo pai)
+//@*--Target:Label          // Composição (sem source, usa grupo pai)
+//@o--Target:Label          // Agregação (sem source, usa grupo pai)
 ```
-❌ Add tags for Diagram A + Diagram B + Diagram C
-❌ Save once
-❌ Try to validate all three (only C will be in the file!)
+
+### SequenceDiagram
+```typescript
+//@->>Target:Label          // Double arrow (->>)
 ```
 
-### How the validation works
+## Onde colocar cada tag
 
-1. You insert/modify `//@` tags in the code for **ONE diagram**
-2. Save the file (the user can do `Cmd+S` or you can request them to save)
-3. The VS Code extension automatically detects the save and generates the Mermaid diagram
-4. The diagram is saved to `/tmp/mad-diagram.mermaid` (always overwritten, never duplicated)
-5. **YOU read this file** to validate the result:
-   ```bash
-   cat /tmp/mad-diagram.mermaid
-   ```
-6. Verify the diagram matches what the tags should produce
-7. If incorrect: adjust the tags, save again, and re-validate
-8. If correct: **move to the next diagram** (repeat from step 1)
+| Tag | Posição | Exemplo |
+|-----|---------|---------|
+| `//@Group` | Acima da classe/função | `//@Auth` acima de `class AuthService` |
+| `//@Group1:Label` | Acima do método | `//@Auth1:Login` acima de `async login()` |
+| `//@Group1.1:Label` | Dentro do método | `//@Auth1.1:Verify` dentro de `login()` |
+| `//@->Target:Label` | Dentro do método, no ponto de chamada | `//@->Dashboard:Show` onde dashboard é chamado |
+| `//@Source->Target:Label` | Entre grupos (nível arquivo) | `//@Entry->Auth:Main flow` |
 
-### Automatic validation of element counts
+## Regras de ouro
 
-**The extension now validates automatically** that the number of nodes and connections in the generated diagram matches the number of tags in the source code.
+1. **Tags devem levar a código real**: Tags devem estar ACIMA de código implementado (função, classe, etc.)
+2. **Uma tag por nó**: Apenas um `//@ID` por nó
+3. **Hierarquia numérica**: Não pule números (1, 1.1, 1.1.1 — não 1, 1.3)
+4. **Labels curtos**: Máximo 3-4 palavras
 
-**Validations by diagram type:**
+## Validação
 
-| Type | Nodes | Connections |
-|------|-------|-------------|
-| `classDiagram` | Groups (# of `//@Class`) | Explicit connections (`//@-->`, `//@<|--`, etc.) |
-| `sequenceDiagram` | Groups (participants) | Explicit connections + entry nodes (viram self-messages) |
-| `stateDiagram-v2` | Groups (states) | Explicit transitions (`//@->`, `//@Source->Target`) |
-| `erDiagram` | All nodes (entities) | Explicit connections |
-| `flowchart/graph` | Groups (subgraphs) | Unique connections (deduplicadas) |
+Após salvar, leia `/tmp/mad-diagram.mermaid`:
 
-**What the agent sees:**
-- If validation passes: silent (logged to output channel)
-- If validation fails: **warnings appear at the TOP of `/tmp/mad-diagram.mermaid`** (but diagram still works below)
-- The agent can check `/tmp/mad-diagram.mermaid` visually
+```bash
+cat /tmp/mad-diagram.mermaid
+```
 
-**Validation header format (when issues exist):**
+### Se houver problemas de validação
 ```
 %%% VALIDATION ISSUES (2)
 %%%   - Tags(9) ≠ Diagrama(8)
@@ -586,105 +125,82 @@ Do NOT add tags for multiple diagrams and validate them all at once — only the
 %%% END VALIDATION
 
 graph LR
-    ...diagram code...
+    ...código do diagrama...
 ```
 
-**How to read validation issues:**
-1. Open `/tmp/mad-diagram.mermaid`
-2. If the file starts with `%%% VALIDATION ISSUES`, read the issues listed
-3. Each line starting with `%%%   -` is a specific problem
-4. The actual diagram code starts after `%%% END VALIDATION`
-5. Fix the issues in the source code, save, and re-validate
+**Ação**: Corrija as tags indicadas, salve, repita.
 
-**Why flowchart connections may differ from tag count:**
-- The flowchart generator **deduplicates** edges (uses a `Set` internally)
-- Duplicate `//@->Target` tags pointing to the same source produce only one edge
-- Example: 9 connection tags but only 8 edges in the diagram due to dedup
+### Motivos comuns de falha
+- **Flowchart**: Deduplicação de edges (tags duplicadas viram uma só)
+- **Sequence**: Entry nodes viram self-messages (contam como conexões)
+- **Class**: Apenas grupos são contados como nós (não métodos)
 
-### Preview panel (VS Code)
-
-When you click on a `//@` tag line in the editor, a **preview panel** opens showing the rendered Mermaid diagram. This is useful for visual validation directly in the IDE.
-
-- The preview only opens on **mouse click exactly on the tag** (not keyboard navigation)
-- If the preview is already open, it won't re-open (early return)
-- Close the preview panel manually to allow re-opening
-
-### File location
-
-| Aspect | Detail |
-|--------|--------|
-| Path | `/tmp/mad-diagram.mermaid` |
-| Type | Single file, always **overwritten** (not duplicated) |
-| Trigger | Auto-generated on file save (`onDidSaveTextDocument`) |
-| Generator | VS Code extension command `mad.generateDiagram` |
-| Extension | Updates automatically without your intervention |
-
-### What TO DO
+## Workflow correto
 
 ```typescript
-// 1. Insert/modify MAD tags in the code (add, remove, or change any //@ tag)
-// 2. Save the file (request user to save if needed)
-// 3. Read the generated diagram:
-//    cat /tmp/mad-diagram.mermaid
-// 4. Validate the output
-// 5. If wrong → adjust tags → save again → re-validate
-// 6. If correct → deliver tags + diagram
+// 1. Defina o tipo
+//@::graph LR
+
+// 2. Defina grupos
+//@Entry
+//@Auth
+//@Dashboard
+
+// 3. Adicione nós numerados
+//@Entry1:Handle login
+//@Auth1:Authenticate
+
+// 4. Adicione conexões
+//@->Auth1:Authenticate
+
+// 5. Salve (Ctrl+S / Cmd+S)
+
+// 6. Valide
+// cat /tmp/mad-diagram.mermaid
+
+// 7. Se erros: ajuste tags → salve → repita
+// Se OK: próxima tag
 ```
 
-**Any change to the source file triggers regeneration.**  
-You don't need to run any command or trigger anything manually. Just:
-1. Edit the `//@` tags in the source code
-2. Save the file
-3. Read `/tmp/mad-diagram.mermaid` to see the updated diagram
-4. Repeat until the diagram is correct
+## Troubleshooting
 
-### What NOT TO DO
+### Diagrama não atualiza
+- Verifique se salvou o arquivo (Ctrl+S / Cmd+S)
+- Verifique se a primeira linha é `//@::type`
+- Verifique se há tags `//@` no arquivo
 
-- ❌ Do NOT create or maintain a separate validation script
-- ❌ Do NOT try to generate diagrams manually (the extension does it automatically)
-- ❌ Do NOT look for the diagram anywhere else (it's always at `/tmp/mad-diagram.mermaid`)
-- ❌ Do NOT use `Date.now()` or timestamps — use the fixed path to avoid duplicates
+### Tag não aparece no diagrama
+- Verifique se está acima de código (não flutuando)
+- Verifique a sintaxe: `//@ID:Label` ou `//@->Target:Label`
+- Verifique o número: `Name1` (não `Name01` ou `Name_1` a não ser que queira synthetic)
 
-### Iterative refinement loop
+### Conexão não aparece
+- Verifique se o target existe como nó
+- Verifique a seta: `->`, `-->`, `*--`, `<|--`, `o--`
+- Para classDiagram: associe ao grupo correto
 
-When the diagram doesn't match expectations:
+### Validação falha
+- Leia os `%%% VALIDATION ISSUES` no topo do arquivo
+- Ajuste as tags conforme indicado
+- Lembre-se: flowchart deduplica edges
 
-```
-1. Identify what's missing or incorrect in the output
-2. Fix the related `//@` tags in the source code
-3. Save the file (Cmd+S)
-4. Read the updated diagram: cat /tmp/mad-diagram.mermaid
-5. Verify again
-6. Repeat until the diagram is correct
-```
+## Exemplos completos
 
-### After completion (self-validation)
+Veja a pasta `examples/`:
+- `01-flowchart-login.ts` — Flowchart com login, 2FA, rate limiting
+- `02-sequence-api.js` — Sequência de API request/response
+- `03-class-diagram-oop.py` — Herança e composição
+- `04-state-machine-login.js` — State machine
+- `05-er-database.sql` — Entidades e relacionamentos
 
-After finishing a task with MAD tags, the agent MUST validate its own work:
+## Checklist final
 
-1. Read `/tmp/mad-diagram.mermaid`
-2. Verify:
-   - All groups are present
-   - All numbered nodes are present
-   - All connections are correct
-   - Labels match the intended meaning
-   - Flow makes logical sense
-3. If anything is wrong, fix the tags and re-validate
-4. Only deliver the result after successful validation
+Antes de entregar, verifique:
 
-## Quick checklist
-
-When writing MAD tags, verify:
-
-- [ ] First diagram line is `//@::type`?
-- [ ] Every important node has `//@`?
-- [ ] Tags eventually lead to actual code (not just floating tags)?
-- [ ] Nodes are correctly numbered (1, 1.1, 1.1.1)?
-- [ ] Labels are short and descriptive?
-- [ ] Flow is clear and concise?
-- [ ] Tagging rules were all followed?
-- [ ] Diagram was validated via `/tmp/mad-diagram.mermaid`?
-- [ ] Diagram matches what the tags should produce?
-- [ ] Followed the order: type → groups → numbered nodes → connections?
-- [ ] Validated progressively (not all at once)?
-- [ ] For flowchart: deduplication of edges is accounted for?
+- [ ] Primeira linha é `//@::type`?
+- [ ] Todas tags têm código abaixo (não flutuam)?
+- [ ] Nós numerados corretamente (1, 1.1, 1.1.1)?
+- [ ] Labels são curtos e descritivos?
+- [ ] Leu `/tmp/mad-diagram.mermaid` e está correto?
+- [ ] Sem `%%% VALIDATION ISSUES` no topo?
+- [ ] Diagrama faz sentido lógico?
