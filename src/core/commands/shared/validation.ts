@@ -121,17 +121,22 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
         if (!/\d/.test(tag.id)) continue;
         
         let hasCode = false;
-        for (let j = tag.line + 1; j < Math.min(tag.line + 5, lines.length); j++) {
+        for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
             const nextLine = lines[j];
-            if (nextLine.match(/\/\/@/)) continue;
-            if (nextLine.trim().length > 0) {
-                hasCode = true;
+            // Skip empty lines
+            if (nextLine.trim().length === 0) continue;
+            // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
+            if (nextLine.match(/\/\/@/)) {
+                issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
+            // Found actual code
+            hasCode = true;
+            break;
         }
         
-        if (!hasCode) {
-            issues.push(`Orphan tag: ${tag.id} (line ${tag.line + 1})`);
+        if (!hasCode && !issues.some(i => i.includes(`line ${tag.line + 1}`))) {
+            issues.push(`Tag ${tag.id} (line ${tag.line + 1}) has no code below it`);
         }
     }
     return issues;
@@ -149,7 +154,7 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): str
         if (tag.isConnection || !/\d/.test(tag.id)) continue;
         
         // Look at the next few lines after the tag
-        const checkRange = Math.min(tag.line + 4, lines.length);
+        const checkRange = Math.min(tag.line + 3, lines.length);
         let foundCode = false;
         let foundCommentBetween = false;
         
@@ -160,9 +165,9 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): str
             // Skip empty lines
             if (trimmed.length === 0) continue;
             
-            // Skip other MAD tags
+            // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
             if (nextLine.match(/\/\/@/)) {
-                foundCode = true; // Another tag is acceptable
+                issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
             

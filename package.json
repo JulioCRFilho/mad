@@ -2,7 +2,7 @@
   "name": "mad",
   "displayName": "Mermaid Auto-Doccing",
   "description": "Extension to automatically generate documentation from Mermaid diagrams in VS Code.",
-  "version": "1.2.22",
+  "version": "1.2.23",
   "engines": {
     "vscode": "^1.74.0"
   },
