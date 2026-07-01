@@ -169,26 +169,34 @@ function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     return issues;
 }
 
-function validateSequenceDiagramCounts(nodes: ProcessedNode[], diagramNodes: number, diagramConnections: number): string[] {
+function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
-    const expectedNodes = nodes.filter(t => !/\d/.test(t.id) && !t.id.includes('->')).length;
+    const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     // In sequenceDiagram, the generator produces messages from 3 sources:
     // 1. Direct connections: //@Source->Target:label
-    // 2. Entry nodes as self-messages: //@Group1:label → Group->>Group:label
-    // 3. Retro nodes with connections (forward pointers): //@Group1:label + //@->Target
+    // 2. Entry nodes as self-messages: //@Group1:label → Group->>Group:label (only if Group is a participant)
+    // 3. Forward pointers (//@->Target) that get attached to the nearest entry node above them
     // The generator deduplicates messages with identical (from, to, label) triples,
     // so we must count unique triples to match what Mermaid actually renders.
     const uniqueMessages = new Set<string>();
 
+    // Collect declared participants (groups without numbers, excluding connection IDs)
+    const participants = new Set<string>();
+    for (const tag of allTags) {
+        if (!tag.isConnection && !/\d/.test(tag.id)) {
+            participants.add(tag.id);
+        }
+    }
+
     // 1. Direct connections: //@Source->>Target:label or //@Source->Target:label
-    for (const node of nodes) {
-        if (node.id.includes('->')) {
-            const [source, target] = node.id.split('->');
+    for (const tag of allTags) {
+        if (tag.isConnection && tag.id.includes('->')) {
+            const [source, target] = tag.id.split('->');
             if (source && target) {
-                const label = node.description || node.label || 'message';
+                const label = tag.description || 'message';
                 uniqueMessages.add(`${source.trim()}->>${target.trim()}:${label}`);
             }
         }
@@ -196,28 +204,47 @@ function validateSequenceDiagramCounts(nodes: ProcessedNode[], diagramNodes: num
 
     // 2. Entry nodes become self-messages from their parent group
     //    Ex: //@UploadDocument1:Build multipart body → UploadDocument->>UploadDocument: Build multipart body
-    for (const node of nodes) {
-        if (/\d/.test(node.id) && /^[a-zA-Z_]+[0-9]+$/.test(node.id)) {
-            const groupMatch = node.id.match(/^([a-zA-Z_]+)\d+/);
+    //    Only if the parent group is a declared participant (matching generator logic)
+    for (const tag of allTags) {
+        if (!tag.isConnection && /\d/.test(tag.id) && /^[a-zA-Z_]+[0-9]+$/.test(tag.id)) {
+            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
-                const label = node.label || node.description || node.id;
-                uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
+                // Only create self-message if the group is a participant
+                if (participants.has(groupId)) {
+                    const label = tag.description || tag.id;
+                    uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
+                }
             }
         }
     }
 
-    // 3. Retro nodes with connections (forward pointers attached to entry nodes)
-    //    Ex: //@Provider1:GetClient with connections: [{id: "Database", label: "GetClient"}]
-    //    → Provider->>Database: GetClient
-    for (const node of nodes) {
-        if (node.connections && node.connections.length > 0) {
-            const groupMatch = node.id.match(/^([a-zA-Z_]+)/);
+    // 3. Forward pointers (//@->Target) attached to the nearest entry node above them
+    //    Ex: //@Provider1:GetClient followed by //@->Database → Provider->>Database: GetClient
+    //    The generator's processForwardPointers associates each forward pointer with the
+    //    closest numbered retro node above it, but only if that node's parent group is a participant.
+    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id));
+    for (const tag of allTags) {
+        if (!tag.isConnection || !tag.id.startsWith('->') || tag.id === '->') continue;
+        const targetId = tag.id.substring(2); // strip "->"
+        if (!targetId) continue;
+
+        // Find the closest numbered tag above this forward pointer
+        let closestEntry: { id: string; line: number } | null = null;
+        for (const n of numberedTags) {
+            if (n.line < tag.line && (!closestEntry || n.line > closestEntry.line)) {
+                closestEntry = { id: n.id, line: n.line };
+            }
+        }
+
+        if (closestEntry) {
+            const groupMatch = closestEntry.id.match(/^([a-zA-Z_]+)\d+/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
-                for (const conn of node.connections) {
-                    const label = conn.label || node.label || node.id;
-                    uniqueMessages.add(`${groupId}->>${conn.id}:${label}`);
+                // Only create message if the parent group is a participant (matching generator logic)
+                if (participants.has(groupId)) {
+                    const label = tag.description || closestEntry.id;
+                    uniqueMessages.add(`${groupId}->>${targetId}:${label}`);
                 }
             }
         }
@@ -324,16 +351,8 @@ export function validateDiagramCounts(
     const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
     
     if (typeKey.startsWith('sequencediagram')) {
-        // For sequence diagrams, use findRelatedTags to get processed nodes with connections
-        // This is necessary because the generator's processForwardPointers attaches forward
-        // pointers to entry nodes, and we need to count those as messages too
-        const mockDoc = {
-            getText: () => documentText,
-            lineCount: lines.length,
-            lineAt: (n: number) => ({ text: lines[n] || '', lineNumber: n })
-        } as any;
-        const processedNodes = findRelatedTags(mockDoc, '', diagramType);
-        issues.push(...validateSequenceDiagramCounts(processedNodes, diagramNodes, diagramConnections));
+        const allTags = parseAllTags(documentText, lines);
+        issues.push(...validateSequenceDiagramCounts(allTags, diagramNodes, diagramConnections));
     } else {
         const allTags = parseAllTags(documentText, lines);
         if (typeKey.startsWith('classdiagram')) {
