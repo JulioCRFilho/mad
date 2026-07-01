@@ -8,6 +8,7 @@ export interface TagInfo {
     line: number;
     isConnection: boolean;
     targetIds: string[];
+    description?: string | null;
     connections?: Array<{ id: string; label: string; arrowPrefix?: string }>;
 }
 
@@ -30,26 +31,30 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         let tagId: string | null = null;
         let isConnection = false;
         let targetIds: string[] = [];
+        let description: string | null = null;
         
         const normalMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
         const implicitMatch = line.match(/\/\/@->([\w.]+)/);
-        const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)/);
+        const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
         const sequenceDoubleMatch = line.match(/\/\/@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
         const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--|-->)([\w.]+)/);
-        const classInlineMatch = line.match(/\/\/@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)/);
+        const classInlineMatch = line.match(/\/\/@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)(?::([^\n]+))?/);
         
         if (classInlineMatch) {
             tagId = `${classInlineMatch[1]}->${classInlineMatch[3]}`;
             isConnection = true;
             targetIds.push(classInlineMatch[3]);
+            description = classInlineMatch[5] ? classInlineMatch[5].trim() : null;
         } else if (sequenceDoubleMatch) {
             tagId = `${sequenceDoubleMatch[1]}->${sequenceDoubleMatch[2]}`;
             isConnection = true;
             targetIds.push(sequenceDoubleMatch[2]);
+            description = sequenceDoubleMatch[3] ? sequenceDoubleMatch[3].trim() : null;
         } else if (explicitMatch) {
             tagId = `${explicitMatch[1]}->${explicitMatch[2]}`;
             isConnection = true;
             targetIds.push(explicitMatch[2]);
+            description = explicitMatch[3] ? explicitMatch[3].trim() : null;
         } else if (implicitMatch) {
             tagId = `->${implicitMatch[1]}`;
             isConnection = true;
@@ -61,19 +66,13 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         } else if (normalMatch) {
             tagId = normalMatch[1];
             isConnection = false;
+            description = normalMatch[2] ? normalMatch[2].trim() : null;
         }
         
         if (!tagId) continue;
         if (tagId.startsWith('::')) continue;
         
-        const tagInfo: TagInfo = { id: tagId, line: i, isConnection, targetIds };
-        
-        // Add connections if it's a node with connections
-        if (!isConnection && normalMatch && normalMatch[2]) {
-            // We could parse connections here if needed
-            // For now, leave it undefined
-        }
-        
+        const tagInfo: TagInfo = { id: tagId, line: i, isConnection, targetIds, description };
         allTags.push(tagInfo);
     }
     return allTags;
@@ -174,10 +173,36 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    // In sequenceDiagram, both explicit connections and entry nodes become messages
-    const explicitConnections = allTags.filter(t => t.isConnection).length;
-    const entryNodes = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id)).length;
-    const expectedConnections = explicitConnections + entryNodes;
+    // In sequenceDiagram, both explicit connections and entry nodes become messages.
+    // The generator deduplicates messages with identical (from, to, label) triples,
+    // so we must count unique triples to match what Mermaid actually renders.
+    const uniqueMessages = new Set<string>();
+
+    // 1. Explicit connections: //@Source->>Target:label or //@Source->Target:label
+    for (const tag of allTags) {
+        if (tag.isConnection && tag.id.includes('->')) {
+            const [source, target] = tag.id.split('->');
+            if (source && target) {
+                const label = tag.description || 'message';
+                uniqueMessages.add(`${source.trim()}->>${target.trim()}:${label}`);
+            }
+        }
+    }
+
+    // 2. Entry nodes become self-messages from their parent group
+    //    Ex: //@UploadDocument1:Build multipart body → UploadDocument->>UploadDocument: Build multipart body
+    for (const tag of allTags) {
+        if (!tag.isConnection && /\d/.test(tag.id) && /^[a-zA-Z_]+[0-9]+$/.test(tag.id)) {
+            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
+            if (groupMatch) {
+                const groupId = groupMatch[1];
+                const label = tag.description || tag.id;
+                uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
+            }
+        }
+    }
+
+    const expectedConnections = uniqueMessages.size;
     if (expectedConnections !== diagramConnections) {
         issues.push(`Connections(${expectedConnections}) ≠ Diagram(${diagramConnections})`);
     }
