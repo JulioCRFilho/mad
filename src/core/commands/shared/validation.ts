@@ -173,12 +173,15 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    // In sequenceDiagram, both explicit connections and entry nodes become messages.
+    // In sequenceDiagram, the generator produces messages from 3 sources:
+    // 1. Direct connections: //@Source->Target:label
+    // 2. Entry nodes as self-messages: //@Group1:label → Group->>Group:label
+    // 3. Retro nodes with connections (forward pointers): //@Group1:label + //@->Target
     // The generator deduplicates messages with identical (from, to, label) triples,
     // so we must count unique triples to match what Mermaid actually renders.
     const uniqueMessages = new Set<string>();
 
-    // 1. Explicit connections: //@Source->>Target:label or //@Source->Target:label
+    // 1. Direct connections: //@Source->>Target:label or //@Source->Target:label
     for (const tag of allTags) {
         if (tag.isConnection && tag.id.includes('->')) {
             const [source, target] = tag.id.split('->');
@@ -198,6 +201,34 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
                 const groupId = groupMatch[1];
                 const label = tag.description || tag.id;
                 uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
+            }
+        }
+    }
+
+    // 3. Forward pointers (//@->Target) attached to the nearest entry node above them
+    //    Ex: //@Provider1:GetClient followed by //@->Database → Provider->>Database: GetClient
+    //    The generator's processForwardPointers associates each forward pointer with the
+    //    closest numbered retro node above it, so we must do the same here.
+    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id));
+    for (const tag of allTags) {
+        if (!tag.isConnection || !tag.id.startsWith('->') || tag.id === '->') continue;
+        const targetId = tag.id.substring(2); // strip "->"
+        if (!targetId) continue;
+
+        // Find the closest numbered tag above this forward pointer
+        let closestEntry: { id: string; line: number } | null = null;
+        for (const n of numberedTags) {
+            if (n.line < tag.line && (!closestEntry || n.line > closestEntry.line)) {
+                closestEntry = { id: n.id, line: n.line };
+            }
+        }
+
+        if (closestEntry) {
+            const groupMatch = closestEntry.id.match(/^([a-zA-Z_]+)\d+/);
+            if (groupMatch) {
+                const groupId = groupMatch[1];
+                const label = tag.description || closestEntry.id;
+                uniqueMessages.add(`${groupId}->>${targetId}:${label}`);
             }
         }
     }

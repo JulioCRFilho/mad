@@ -45,7 +45,7 @@ function mockDocument(content) {
 
 // ── helpers ─────────────────────────────────────────────────────────────
 function readExample(name) {
-  return readFileSync(resolve(__dirname, '..', 'examples', name), 'utf-8');
+  return readFileSync(resolve(__dirname, '..', '.agents', 'skills', 'mad', 'examples', name), 'utf-8');
 }
 
 function processExample(name) {
