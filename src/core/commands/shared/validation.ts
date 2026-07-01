@@ -205,8 +205,9 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     // 2. Entry nodes become self-messages from their parent group
     //    Ex: //@UploadDocument1:Build multipart body → UploadDocument->>UploadDocument: Build multipart body
     //    Only if the parent group is a declared participant (matching generator logic)
+    //    Note: matches ANY numbered node (Provider1, Provider1.1, Provider1.2, etc.)
     for (const tag of allTags) {
-        if (!tag.isConnection && /\d/.test(tag.id) && /^[a-zA-Z_]+[0-9]+$/.test(tag.id)) {
+        if (!tag.isConnection && /\d/.test(tag.id)) {
             const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
@@ -219,11 +220,12 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
         }
     }
 
-    // 3. Forward pointers (//@->Target) attached to the nearest entry node above them
-    //    Ex: //@Provider1:GetClient followed by //@->Database → Provider->>Database: GetClient
+    // 3. Forward pointers (//@->Target) attached to the nearest numbered node above them
+    //    Ex: //@Provider1.1:Check recipient ID followed by //@->Provider → Provider->>Provider: Check recipient ID
     //    The generator's processForwardPointers associates each forward pointer with the
-    //    closest numbered retro node above it, but only if that node's parent group is a participant.
-    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id));
+    //    closest numbered retro node above it (including sequence nodes), but only if that
+    //    node's parent group is a participant.
+    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id));
     for (const tag of allTags) {
         if (!tag.isConnection || !tag.id.startsWith('->') || tag.id === '->') continue;
         const targetId = tag.id.substring(2); // strip "->"
