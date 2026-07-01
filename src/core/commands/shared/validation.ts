@@ -138,6 +138,59 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
 }
 
 /**
+ * Checks that tags are properly positioned directly above code, not separated by comments.
+ * A tag should be followed by code (or another tag), not by blank lines or regular comments.
+ */
+export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): string[] {
+    const issues: string[] = [];
+    
+    for (const tag of allTags) {
+        // Only check numbered entry nodes (Provider1, Provider1.1, etc.)
+        if (tag.isConnection || !/\d/.test(tag.id)) continue;
+        
+        // Look at the next few lines after the tag
+        const checkRange = Math.min(tag.line + 4, lines.length);
+        let foundCode = false;
+        let foundCommentBetween = false;
+        
+        for (let j = tag.line + 1; j < checkRange; j++) {
+            const nextLine = lines[j];
+            const trimmed = nextLine.trim();
+            
+            // Skip empty lines
+            if (trimmed.length === 0) continue;
+            
+            // Skip other MAD tags
+            if (nextLine.match(/\/\/@/)) {
+                foundCode = true; // Another tag is acceptable
+                break;
+            }
+            
+            // Found a regular comment line (// but not //@)
+            if (trimmed.startsWith('//') && !trimmed.startsWith('//@')) {
+                foundCommentBetween = true;
+                continue; // Keep checking for code
+            }
+            
+            // Found actual code
+            if (!trimmed.startsWith('//')) {
+                foundCode = true;
+                if (foundCommentBetween) {
+                    issues.push(`Tag ${tag.id} (line ${tag.line + 1}) has regular comments between tag and code (line ${j + 1})`);
+                }
+                break;
+            }
+        }
+        
+        if (!foundCode) {
+            issues.push(`Tag ${tag.id} (line ${tag.line + 1}) has no code below it`);
+        }
+    }
+    
+    return issues;
+}
+
+/**
  * Checks connections pointing to non-existent IDs
  */
 export function findInvalidReferences(allTags: TagInfo[]): string[] {
@@ -372,6 +425,7 @@ export function validateDiagramCounts(
     const allTags = parseAllTags(documentText, lines);
     issues.push(...findOrphanTags(allTags, lines));
     issues.push(...findInvalidReferences(allTags));
+    issues.push(...findTagPlacementIssues(allTags, lines));
     
     return issues;
 }
