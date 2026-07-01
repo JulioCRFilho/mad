@@ -1,5 +1,7 @@
 import { filterAllNodes } from '../../diagram/parser';
 import { validateDiagram, ValidationResult } from '../../diagram/validator';
+import { findRelatedTags } from './helpers';
+import { ProcessedNode } from '../../diagram/parser';
 
 export type { ValidationResult } from '../../diagram/validator';
 
@@ -167,9 +169,9 @@ function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     return issues;
 }
 
-function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
+function validateSequenceDiagramCounts(nodes: ProcessedNode[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
-    const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
+    const expectedNodes = nodes.filter(t => !/\d/.test(t.id) && !t.id.includes('->')).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
@@ -182,11 +184,11 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     const uniqueMessages = new Set<string>();
 
     // 1. Direct connections: //@Source->>Target:label or //@Source->Target:label
-    for (const tag of allTags) {
-        if (tag.isConnection && tag.id.includes('->')) {
-            const [source, target] = tag.id.split('->');
+    for (const node of nodes) {
+        if (node.id.includes('->')) {
+            const [source, target] = node.id.split('->');
             if (source && target) {
-                const label = tag.description || 'message';
+                const label = node.description || node.label || 'message';
                 uniqueMessages.add(`${source.trim()}->>${target.trim()}:${label}`);
             }
         }
@@ -194,41 +196,29 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
 
     // 2. Entry nodes become self-messages from their parent group
     //    Ex: //@UploadDocument1:Build multipart body → UploadDocument->>UploadDocument: Build multipart body
-    for (const tag of allTags) {
-        if (!tag.isConnection && /\d/.test(tag.id) && /^[a-zA-Z_]+[0-9]+$/.test(tag.id)) {
-            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
+    for (const node of nodes) {
+        if (/\d/.test(node.id) && /^[a-zA-Z_]+[0-9]+$/.test(node.id)) {
+            const groupMatch = node.id.match(/^([a-zA-Z_]+)\d+/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
-                const label = tag.description || tag.id;
+                const label = node.label || node.description || node.id;
                 uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
             }
         }
     }
 
-    // 3. Forward pointers (//@->Target) attached to the nearest entry node above them
-    //    Ex: //@Provider1:GetClient followed by //@->Database → Provider->>Database: GetClient
-    //    The generator's processForwardPointers associates each forward pointer with the
-    //    closest numbered retro node above it, so we must do the same here.
-    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id) && /^[a-zA-Z_]+[0-9]+$/.test(t.id));
-    for (const tag of allTags) {
-        if (!tag.isConnection || !tag.id.startsWith('->') || tag.id === '->') continue;
-        const targetId = tag.id.substring(2); // strip "->"
-        if (!targetId) continue;
-
-        // Find the closest numbered tag above this forward pointer
-        let closestEntry: { id: string; line: number } | null = null;
-        for (const n of numberedTags) {
-            if (n.line < tag.line && (!closestEntry || n.line > closestEntry.line)) {
-                closestEntry = { id: n.id, line: n.line };
-            }
-        }
-
-        if (closestEntry) {
-            const groupMatch = closestEntry.id.match(/^([a-zA-Z_]+)\d+/);
+    // 3. Retro nodes with connections (forward pointers attached to entry nodes)
+    //    Ex: //@Provider1:GetClient with connections: [{id: "Database", label: "GetClient"}]
+    //    → Provider->>Database: GetClient
+    for (const node of nodes) {
+        if (node.connections && node.connections.length > 0) {
+            const groupMatch = node.id.match(/^([a-zA-Z_]+)/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
-                const label = tag.description || closestEntry.id;
-                uniqueMessages.add(`${groupId}->>${targetId}:${label}`);
+                for (const conn of node.connections) {
+                    const label = conn.label || node.label || node.id;
+                    uniqueMessages.add(`${groupId}->>${conn.id}:${label}`);
+                }
             }
         }
     }
@@ -328,24 +318,37 @@ export function validateDiagramCounts(
     diagramType: string
 ): string[] {
     const lines = documentText.split(/\r?\n/);
-    const allTags = parseAllTags(documentText, lines);
     const { nodes: diagramNodes, connections: diagramConnections } = countDiagramElements(mermaidCode);
     
     const issues: string[] = [];
     const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
     
-    if (typeKey.startsWith('classdiagram')) {
-        issues.push(...validateClassDiagramCounts(allTags, diagramNodes, diagramConnections));
-    } else if (typeKey.startsWith('sequencediagram')) {
-        issues.push(...validateSequenceDiagramCounts(allTags, diagramNodes, diagramConnections));
-    } else if (typeKey.startsWith('flowchart') || typeKey.startsWith('graph')) {
-        issues.push(...validateFlowchartCounts(allTags, diagramNodes, diagramConnections));
-    } else if (typeKey.startsWith('statediagram') || typeKey.includes('state')) {
-        issues.push(...validateStateDiagramCounts(allTags, diagramNodes, diagramConnections));
-    } else if (typeKey.startsWith('erdiagram')) {
-        issues.push(...validateERDiagramCounts(allTags, diagramNodes, diagramConnections));
+    if (typeKey.startsWith('sequencediagram')) {
+        // For sequence diagrams, use findRelatedTags to get processed nodes with connections
+        // This is necessary because the generator's processForwardPointers attaches forward
+        // pointers to entry nodes, and we need to count those as messages too
+        const mockDoc = {
+            getText: () => documentText,
+            lineCount: lines.length,
+            lineAt: (n: number) => ({ text: lines[n] || '', lineNumber: n })
+        } as any;
+        const processedNodes = findRelatedTags(mockDoc, '', diagramType);
+        issues.push(...validateSequenceDiagramCounts(processedNodes, diagramNodes, diagramConnections));
+    } else {
+        const allTags = parseAllTags(documentText, lines);
+        if (typeKey.startsWith('classdiagram')) {
+            issues.push(...validateClassDiagramCounts(allTags, diagramNodes, diagramConnections));
+        } else if (typeKey.startsWith('flowchart') || typeKey.startsWith('graph')) {
+            issues.push(...validateFlowchartCounts(allTags, diagramNodes, diagramConnections));
+        } else if (typeKey.startsWith('statediagram') || typeKey.includes('state')) {
+            issues.push(...validateStateDiagramCounts(allTags, diagramNodes, diagramConnections));
+        } else if (typeKey.startsWith('erdiagram')) {
+            issues.push(...validateERDiagramCounts(allTags, diagramNodes, diagramConnections));
+        }
     }
     
+    // Orphan and reference checks still use raw tags
+    const allTags = parseAllTags(documentText, lines);
     issues.push(...findOrphanTags(allTags, lines));
     issues.push(...findInvalidReferences(allTags));
     
