@@ -32,10 +32,16 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **Groups**: Use `//@GroupName` directly above a class/block to create a `subgraph`.
 *   **Entry Nodes**: Use `//@Group1:Label` directly above methods for main nodes inside subgraphs (e.g., `//@Entry1:Handle login` above the method).
 *   **Sequence Nodes**: Use `//@Group1.1:Label` directly above sub-methods for sub-steps (e.g., `//@Entry1.1:Verify 2FA`).
-*   **Synthetic Nodes**: Use `//@Node_1:Label` for standalone nodes outside groups.
-*   **Connections**: Place connection tags directly above the group/class definition (not in a separate header):
+*   **Synthetic Nodes**: Use `//@NodeName_1:Label` for standalone nodes outside groups (e.g., `//@Pagarme_1:Pagar.me V5 API`). The `_1` suffix is required to distinguish synthetic nodes from groups. These are the **only** way to represent external systems (APIs, databases, services) that are not code classes.
+*   **Group vs Node Distinction**:
+    *   `//@GroupName` → creates a `subgraph` (container for nodes)
+    *   `//@GroupName:Label` → creates an entry **node** inside the group
+    *   `//@NodeName_1:Label` → creates a standalone **synthetic node** outside any group
+    *   ⚠️ Only nodes (entry nodes and synthetic nodes) can be used as connection targets. Groups cannot.
+*   **Connections**: Place connection tags directly above the group/class definition or directly above the specific code line that performs the action:
     *   Use `//@->Target:Label` (implicit source)
     *   Use `//@Source->Target:Label` (explicit)
+    *   Use `->` for standard connections (not `->>` which is reserved for sequence diagrams)
 *   **Deduplication**: Duplicate connections are automatically combined into one edge.
 
 ### 2.2 Sequence Diagram (`//@::sequenceDiagram`)
@@ -43,6 +49,7 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **Participants**: Use `//@GroupName` directly above a class/component to define a participant.
 *   **Self-Messages**: Numbered nodes (e.g., `//@Client1:Fetch data`) become self-messages (`Client->>Client: Fetch data`).
 *   **Arrows**: All messages use `->>` (double arrow).
+*   **Connection Tags**: Use `//@Source->>Target:Label` for messages between participants. Use `//@->>Target:Label` when the source is the current method/participant.
 *   **Ordering**: Connection flow follows the strict top-to-bottom order of the file.
 
 ### 2.3 Class Diagram (`//@::classDiagram`)
@@ -123,6 +130,39 @@ class MyClass {
 }
 ```
 
+### ❌ DON'T: Create "loose tags" (tags not above any code)
+```dart
+//@::graph LR
+//@Group1:Node1  // ❌ "Loose tag" - not above any code
+class MyClass {}
+```
+
+### ✅ DO: Place tags directly above code
+```dart
+//@::graph LR
+//@Group1
+class MyClass {
+  //@Group1:Node1  // ✓ Above code
+  void method1() {}
+}
+```
+
+### ❌ DON'T: Connect to a group name instead of a node
+```dart
+//@::graph LR
+//@Batch
+//@Pagarme  // ❌ This is a GROUP, not a node
+//@Batch->Pagarme:POST /api  // ❌ ERROR: Pagarme is a group, not connectable
+```
+
+### ✅ DO: Use synthetic node syntax for external systems
+```dart
+//@::graph LR
+//@Batch
+//@Pagarme_1:Pagar.me V5 API  // ✓ Synthetic node
+//@Batch->Pagarme_1:POST /api  // ✓ Works!
+```
+
 ### ❌ DON'T: Document only some methods (partial coverage)
 ```dart
 //@::graph LR
@@ -197,5 +237,6 @@ class PaymentService {
     *   ⚠️ **CRITICAL**: Do NOT group tags in a header section
     *   ⚠️ **CRITICAL**: Place connection tags directly above the group/class definition
     *   ⚠️ **CRITICAL**: Document 100% of code paths - every method, every branch, every error handler
+    *   ⚠️ **CRITICAL**: Use synthetic nodes (`//@Name_1:Label`) for external systems, not groups
 4.  **Validate**: Save the file, run `cat /tmp/mad-diagram.mermaid`, and resolve any `%%% VALIDATION ISSUES` immediately.
 5.  **Verify**: Ensure all nodes have connections where appropriate and the diagram tells a complete story with no gaps.
