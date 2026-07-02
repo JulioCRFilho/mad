@@ -2,10 +2,10 @@
   "version": 1,
   "skills": {
     "mad": {
-      "source": "juliocrfilho/mad",
+      "source": "JulioCRFilho/mad",
       "sourceType": "github",
       "skillPath": ".agents/skills/mad/SKILL.md",
-      "computedHash": "2f44fd0aa5311c1dedfb2c1115e5a31be80095e5c182a3778258aec5b20180f3"
+      "computedHash": "e29d7eb81dec42d85dd2d333f5ea9766552ce5018767ff6af293ddb57553cd19"
     }
   }
 }
