@@ -7,6 +7,8 @@ export interface NodeInfo {
     isArrow: boolean;
     /** Arrow type for classDiagram: '-->' (assoc), '--' (dep), '<|--' (inheritance), '*--' (composition), 'o--' (aggregation) */
     arrowPrefix?: string;
+    /** Step number for sequence diagram arrows: '1', '1.1', '1.2', etc. */
+    stepNumber?: string;
 }
 
 export interface ProcessedNode {
@@ -14,8 +16,11 @@ export interface ProcessedNode {
     id: string;
     label: string;
     description: string | null;
-    connections: Array<{ id: string; label: string; arrowPrefix?: string }>;
+    /** Step number for sequence diagram arrows: '1', '1.1', '1.2', etc. Only applies to direct connection nodes */
+    stepNumber?: string;
+    connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }>;
 }
+
 
 /**
  * Reads the diagram type from the file.
@@ -115,6 +120,22 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
             continue;
         }
 
+        // Checks //@Source->N>Target:comment (sequence diagram with step number in arrow)
+        // Ex: //@Provider->1>Provider:Validate input or //@Provider->1.1>Provider:Build multipart body
+        // IMPORTANT: This must come BEFORE the general //@Source->Target regex
+        const arrowInlineStepMatch = line.match(/\/\/\s*@([\w.]+)->([\d.]+)>([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineStepMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineStepMatch[1]}->${arrowInlineStepMatch[3]}`,
+                description: arrowInlineStepMatch[4] ? arrowInlineStepMatch[4].trim() : null,
+                isArrow: true,
+                arrowPrefix: '->>',
+                stepNumber: arrowInlineStepMatch[2]  // Store the step number (e.g., "1", "1.1", "1.2")
+            });
+            continue;
+        }
+
         // Checks //@Source*--Target:comment (inline classDiagram composition)
         // Ex: //@OnboardingPersonalInfo*--PhoneNumber:contains
         const arrowInlineStarMatch = line.match(/\/\/\s*@([\w.]+)\*--([\w.]+)(?::([^\n]+))?/);
@@ -192,10 +213,10 @@ export function splitNodes(
     allNodes: NodeInfo[]
 ): {
     retroPointers: Array<{ line: number; id: string; description: string | null }>;
-    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }>;
+    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }>;
 } {
     const retroPointers: Array<{ line: number; id: string; description: string | null }> = [];
-    const forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
+    const forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }> = [];
 
     for (const node of allNodes) {
         if (node.isArrow) {
@@ -203,7 +224,8 @@ export function splitNodes(
                 line: node.line,
                 id: node.id,
                 description: node.description,
-                arrowPrefix: node.arrowPrefix
+                arrowPrefix: node.arrowPrefix,
+                stepNumber: node.stepNumber
             });
         } else {
             retroPointers.push({

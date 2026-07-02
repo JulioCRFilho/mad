@@ -35,6 +35,10 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         
         const normalMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
         const implicitMatch = line.match(/\/\/\s*@->([\w.]+)/);
+        // Step-number arrow (e.g. //@Provider->1>Provider:Validate input or //@Provider->1.1>Provider:Label)
+        // IMPORTANT: must be checked BEFORE explicitMatch, otherwise the generic
+        // "//@Source->Target" regex greedily (mis)matches the step number as the target ID.
+        const stepMatch = line.match(/\/\/\s*@([\w.]+)->([\d.]+)>([\w.]+)(?::([^\n]+))?/);
         const explicitMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
         const sequenceDoubleMatch = line.match(/\/\/\s*@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
         const classMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--|-->)([\w.]+)/);
@@ -50,12 +54,18 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
             isConnection = true;
             targetIds.push(sequenceDoubleMatch[2]);
             description = sequenceDoubleMatch[3] ? sequenceDoubleMatch[3].trim() : null;
+        } else if (stepMatch) {
+            tagId = `${stepMatch[1]}->${stepMatch[3]}`;
+            isConnection = true;
+            targetIds.push(stepMatch[3]);
+            description = stepMatch[4] ? stepMatch[4].trim() : null;
         } else if (explicitMatch) {
             tagId = `${explicitMatch[1]}->${explicitMatch[2]}`;
             isConnection = true;
             targetIds.push(explicitMatch[2]);
             description = explicitMatch[3] ? explicitMatch[3].trim() : null;
         } else if (implicitMatch) {
+
             tagId = `->${implicitMatch[1]}`;
             isConnection = true;
             targetIds.push(implicitMatch[1]);
@@ -259,6 +269,18 @@ export function findMissingConnections(allTags: TagInfo[], diagramType: string):
 export function findInvalidReferences(allTags: TagInfo[]): string[] {
     const issues: string[] = [];
     const validIds = new Set(allTags.map(t => t.id));
+
+    // Additionally, any identifier that appears as a source or target in a direct
+    // connection (//@Source->Target or //@Source->N>Target) is implicitly valid —
+    // the generator auto-adds these as participants without needing a //@ tag.
+    for (const tag of allTags) {
+        if (tag.isConnection && tag.id.includes('->')) {
+            const [source, target] = tag.id.split('->');
+            if (source) validIds.add(source.trim());
+            if (target) validIds.add(target.trim());
+        }
+    }
+
     for (const tag of allTags) {
         if (!tag.isConnection) continue;
         for (const targetId of tag.targetIds) {
@@ -287,7 +309,28 @@ function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
 
 function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
-    const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
+
+    // Collect declared participants (groups without numbers, excluding connection IDs)
+    const participants = new Set<string>();
+    for (const tag of allTags) {
+        if (!tag.isConnection && !/\d/.test(tag.id)) {
+            participants.add(tag.id);
+        }
+    }
+
+    // The generator also auto-adds any connection source/target that isn't already a
+    // declared group as an implicit participant (e.g. external systems like "S3" used
+    // via //@Storage->1>S3:Label without ever declaring //@S3). Count those too, so the
+    // expected node count matches what Mermaid actually renders.
+    for (const tag of allTags) {
+        if (tag.isConnection && tag.id.includes('->')) {
+            const [source, target] = tag.id.split('->');
+            if (source) participants.add(source.trim());
+            if (target) participants.add(target.trim());
+        }
+    }
+
+    const expectedNodes = participants.size;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
@@ -298,14 +341,6 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     // The generator deduplicates messages with identical (from, to, label) triples,
     // so we must count unique triples to match what Mermaid actually renders.
     const uniqueMessages = new Set<string>();
-
-    // Collect declared participants (groups without numbers, excluding connection IDs)
-    const participants = new Set<string>();
-    for (const tag of allTags) {
-        if (!tag.isConnection && !/\d/.test(tag.id)) {
-            participants.add(tag.id);
-        }
-    }
 
     // 1. Direct connections: //@Source->>Target:label or //@Source->Target:label
     for (const tag of allTags) {

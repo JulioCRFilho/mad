@@ -156,9 +156,9 @@ export function processRetroPointers(
  * Groups consecutive forward pointers (same line) into a single synthetic node
  */
 function groupConsecutiveForwardPointers(
-    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }>
-): Array<{ line: number; ids: string[]; descriptions: Map<string, string>; arrowPrefixes: Map<string, string> }> {
-    const grouped: Array<{ line: number; ids: string[]; descriptions: Map<string, string>; arrowPrefixes: Map<string, string> }> = [];
+    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }>
+): Array<{ line: number; ids: string[]; descriptions: Map<string, string>; arrowPrefixes: Map<string, string>; stepNumbers: Map<string, string> }> {
+    const grouped: Array<{ line: number; ids: string[]; descriptions: Map<string, string>; arrowPrefixes: Map<string, string>; stepNumbers: Map<string, string> }> = [];
 
     for (const node of forwardPointers) {
         const existing = grouped.find(g => g.line === node.line);
@@ -170,12 +170,16 @@ function groupConsecutiveForwardPointers(
             if (node.arrowPrefix) {
                 existing.arrowPrefixes.set(node.id, node.arrowPrefix);
             }
+            if (node.stepNumber) {
+                existing.stepNumbers.set(node.id, node.stepNumber);
+            }
         } else {
             grouped.push({
                 line: node.line,
                 ids: [node.id],
                 descriptions: node.description ? new Map([[node.id, node.description]]) : new Map(),
-                arrowPrefixes: node.arrowPrefix ? new Map([[node.id, node.arrowPrefix]]) : new Map()
+                arrowPrefixes: node.arrowPrefix ? new Map([[node.id, node.arrowPrefix]]) : new Map(),
+                stepNumbers: node.stepNumber ? new Map([[node.id, node.stepNumber]]) : new Map()
             });
         }
     }
@@ -195,17 +199,17 @@ function groupConsecutiveForwardPointers(
  */
 export function processForwardPointers(
     document: vscode.TextDocument,
-    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }>,
+    forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }>,
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
     _prefix: string
 ): {
-    syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string }> }>;
-    extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
-    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
+    syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string }> }>;
+    extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>;
+    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>;
 } {
-    const syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string }> }> = [];
-    const extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }> = [];
-    const orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }> = [];
+    const syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string }> }> = [];
+    const extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }> = [];
+    const orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }> = [];
 
     const regularForward: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
 
@@ -218,7 +222,8 @@ export function processForwardPointers(
                     targetId: target.trim(),
                     label: node.description || '',
                     line: node.line,
-                    arrowPrefix: node.arrowPrefix
+                    arrowPrefix: node.arrowPrefix,
+                    stepNumber: node.stepNumber
                 });
             }
         } else {
@@ -240,7 +245,8 @@ export function processForwardPointers(
                     targetId: targetId,
                     label: group.descriptions.get(targetId) || '',
                     line: group.line,
-                    arrowPrefix: group.arrowPrefixes.get(targetId)
+                    arrowPrefix: group.arrowPrefixes.get(targetId),
+                    stepNumber: group.stepNumbers.get(targetId)
                 });
             }
         } else {
@@ -252,7 +258,9 @@ export function processForwardPointers(
 
             const connections = group.ids.map(targetId => ({
                 id: targetId,
-                label: group.descriptions.get(targetId) || ''
+                label: group.descriptions.get(targetId) || '',
+                stepNumber: group.stepNumbers.get(targetId),
+                line: group.line
             }));
 
             syntheticNodes.push({
@@ -273,20 +281,27 @@ export function processForwardPointers(
  */
 export function filterAndSortNodes(
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
-    syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string }> }>,
-    extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>
+    syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> }>,
+    extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>
 ): ProcessedNode[] {
-    const allNodes: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string; arrowPrefix?: string }> }> = [
-        ...retroNodes.map(n => ({ ...n, connections: [] as Array<{ id: string; label: string; arrowPrefix?: string }> })),
+    const allNodes: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> }> = [
+        ...retroNodes.map(n => ({ ...n, connections: [] as Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> })),
         ...syntheticNodes.map(n => ({ ...n, description: null as string | null, connections: n.connections || [] }))
     ];
 
     for (const conn of extraConnections) {
         const sourceNode = allNodes.find(n => n.id === conn.sourceId);
         if (sourceNode) {
-            sourceNode.connections.push({ id: conn.targetId, label: conn.label, arrowPrefix: conn.arrowPrefix });
+            sourceNode.connections.push({ 
+                id: conn.targetId, 
+                label: conn.label, 
+                arrowPrefix: conn.arrowPrefix,
+                stepNumber: conn.stepNumber,
+                line: conn.line
+            });
         }
     }
+
 
     const normalized = allNodes.map(node => ({
         line: node.line,
@@ -311,7 +326,7 @@ export function filterAndSortNodes(
 export interface RelatedTagsResult {
     nodes: ProcessedNode[];
     /** Direct connections (//@Source->Target) in the original file order */
-    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string }>;
+    orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>;
 }
 
 /**
@@ -336,7 +351,13 @@ export function findRelatedTags(
                 c => c.id === conn.targetId && c.label === conn.label
             );
             if (!alreadyPresent) {
-                sourceNode.connections.push({ id: conn.targetId, label: conn.label, arrowPrefix: conn.arrowPrefix });
+                sourceNode.connections.push({ 
+                    id: conn.targetId, 
+                    label: conn.label, 
+                    arrowPrefix: conn.arrowPrefix,
+                    stepNumber: conn.stepNumber,
+                    line: conn.line
+                });
             }
         }
     }
