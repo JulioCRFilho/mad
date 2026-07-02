@@ -215,6 +215,35 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): str
 }
 
 /**
+ * Checks for diagrams with nodes but no connections
+ */
+export function findMissingConnections(allTags: TagInfo[], diagramType: string): string[] {
+    const issues: string[] = [];
+    const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
+    
+    // Only check diagram types that should have connections
+    const shouldHaveConnections = 
+        typeKey.startsWith('classdiagram') ||
+        typeKey.startsWith('flowchart') ||
+        typeKey.startsWith('graph') ||
+        typeKey.startsWith('statediagram') ||
+        typeKey.startsWith('erdiagram');
+    
+    if (!shouldHaveConnections) return issues;
+    
+    // Count nodes and connections
+    const nodes = allTags.filter(t => !t.isConnection && !/^\d+$/.test(t.id));
+    const connections = allTags.filter(t => t.isConnection);
+    
+    // If there are nodes but no connections, warn the user
+    if (nodes.length > 0 && connections.length === 0) {
+        issues.push(`Diagram has ${nodes.length} node(s) but no connections - did you forget to add relationship tags?`);
+    }
+    
+    return issues;
+}
+
+/**
  * Checks connections pointing to non-existent IDs
  */
 export function findInvalidReferences(allTags: TagInfo[]): string[] {
@@ -450,6 +479,7 @@ export function validateDiagramCounts(
     issues.push(...findOrphanTags(allTags, lines));
     issues.push(...findInvalidReferences(allTags));
     issues.push(...findTagPlacementIssues(allTags, lines));
+    issues.push(...findMissingConnections(allTags, diagramType));
     
     return issues;
 }
