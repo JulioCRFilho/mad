@@ -11,7 +11,7 @@ import { readDiagramType } from '../diagram/parser';
  *
  * Overrides the default pipeline to ensure messages
  * (//@Source->Target connections) are rendered in the exact order
- * they appear in the file, regardless of grouping by source node.
+ * they appear in the file, grouped by method with hierarchical numbering.
  */
 export class SequenceCommand extends BaseDiagramCommand {
     readonly type = 'sequence';
@@ -197,21 +197,23 @@ export class SequenceCommand extends BaseDiagramCommand {
             mermaid += `    participant ${p}\n`;
         }
 
-        // Render groups with rect blocks for visual hierarchy
+        // Render groups with clean section headers
+        // Uses Note over for method labels, no colored rect blocks
         let methodCounter = 0;
         for (const group of groups) {
             methodCounter++;
-            const color = methodCounter % 2 === 0 ? '191, 223, 255' : '220, 240, 255';
-            mermaid += `    rect rgb(${color})\n`;
-            mermaid += `        Note over ${group.methodParticipant}: ${methodCounter}. ${group.methodLabel}\n`;
+
+            // Add a separator between groups (dashed note)
+            if (methodCounter > 1) {
+                mermaid += `    Note over ${group.methodParticipant}: ────\n`;
+            }
+            mermaid += `    Note over ${group.methodParticipant}: **${methodCounter}. ${group.methodLabel}**\n`;
 
             let stepCounter = 0;
             for (const msg of group.messages) {
                 stepCounter++;
-                mermaid += `        ${msg.from}->>${msg.to}: ${methodCounter}.${stepCounter} ${msg.label}\n`;
+                mermaid += `    ${msg.from}->>${msg.to}: ${methodCounter}.${stepCounter} ${msg.label}\n`;
             }
-
-            mermaid += `    end\n`;
         }
 
         return mermaid;

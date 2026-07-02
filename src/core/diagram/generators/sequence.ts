@@ -1,3 +1,11 @@
+/**
+ * Generates a sequence diagram with hierarchical grouping.
+ *
+ * Each method (numbered node like Provider1) becomes a visual group
+ * with a `Note over` header and its own step numbering.
+ * Groups are separated by an empty line for visual clarity.
+ * No colored rect blocks are used to keep the diagram clean and readable.
+ */
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator } from './types';
 
@@ -149,21 +157,23 @@ export const sequenceGenerator: DiagramGenerator = {
         // Render participants
         for (const p of participants) mermaid += `    participant ${p}\n`;
 
-        // Render groups with rect blocks for visual hierarchy
+        // Render groups with clean section headers
+        // Uses Note over for method labels, no colored rect blocks
         let methodCounter = 0;
         for (const group of groups) {
             methodCounter++;
-            const color = methodCounter % 2 === 0 ? '191, 223, 255' : '220, 240, 255';
-            mermaid += `    rect rgb(${color})\n`;
-            mermaid += `        Note over ${group.methodParticipant}: ${methodCounter}. ${group.methodLabel}\n`;
+
+            // Add a separator between groups (empty line + dashed note)
+            if (methodCounter > 1) {
+                mermaid += `    Note over ${group.methodParticipant}: ────\n`;
+            }
+            mermaid += `    Note over ${group.methodParticipant}: **${methodCounter}. ${group.methodLabel}**\n`;
 
             let stepCounter = 0;
             for (const msg of group.messages) {
                 stepCounter++;
-                mermaid += `        ${msg.from}->>${msg.to}: ${methodCounter}.${stepCounter} ${msg.label}\n`;
+                mermaid += `    ${msg.from}->>${msg.to}: ${methodCounter}.${stepCounter} ${msg.label}\n`;
             }
-
-            mermaid += `    end\n`;
         }
 
         return mermaid;
