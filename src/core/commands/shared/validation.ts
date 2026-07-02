@@ -117,7 +117,26 @@ export function countDiagramElements(mermaidCode: string): { nodes: number; conn
 export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
     const issues: string[] = [];
     for (const tag of allTags) {
-        if (tag.isConnection) continue;
+        // Check both entry nodes and connection tags for stacking
+        if (tag.isConnection) {
+            // For connection tags, check if they're stacked (no code between them)
+            let hasCodeBetween = false;
+            for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
+                const nextLine = lines[j];
+                // Skip empty lines
+                if (nextLine.trim().length === 0) continue;
+                // If we find another MAD tag, this is stacked
+                if (nextLine.match(/\/\/@/)) {
+                    issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
+                    break;
+                }
+                // Found actual code
+                hasCodeBetween = true;
+                break;
+            }
+            continue;
+        }
+        
         if (!/\d/.test(tag.id)) continue;
         
         let hasCode = false;
