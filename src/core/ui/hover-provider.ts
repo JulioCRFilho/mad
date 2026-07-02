@@ -12,13 +12,13 @@ export class MADHoverProvider implements vscode.HoverProvider {
     provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.Hover> {
         const lineText = document.lineAt(position.line).text;
 
-        // Quick check: line must contain //@
-        if (!lineText.includes('//@')) {
+        // Quick check: line must contain //@ (with optional space)
+        if (!lineText.includes('//@') && !lineText.includes('// @')) {
             return null;
         }
 
-        // Check if the line has a valid //@ tag
-        const tagMatch = lineText.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
+        // Check if the line has a valid //@ tag (with optional space)
+        const tagMatch = lineText.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
         if (!tagMatch) return null;
 
         const fullId = tagMatch[1];
@@ -29,7 +29,7 @@ export class MADHoverProvider implements vscode.HoverProvider {
         const lines = text.split(/\r?\n/);
         let codeLine: string | null = null;
         let j = position.line + 1;
-        while (j < lines.length && lines[j].match(/\/\/@/)) {
+        while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
             j++;
         }
         if (j < lines.length) {
@@ -37,7 +37,7 @@ export class MADHoverProvider implements vscode.HoverProvider {
         }
 
         // Determines the tag type
-        const isArrow = lineText.includes('//@->');
+        const isArrow = lineText.includes('//@->') || lineText.includes('// @->');
         const isGroup = !/\d/.test(fullId);
         const isEntry = /^[a-zA-Z_]+[0-9]+$/.test(fullId);
         const isSequence = /\.[0-9]+/.test(fullId);

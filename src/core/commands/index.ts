@@ -72,7 +72,7 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     let tagMatch: RegExpMatchArray | null = null;
     
     for (let i = 0; i < lines.length; i++) {
-        const match = lines[i].match(/\/\/@::(.+)/);
+        const match = lines[i].match(/\/\/\s*@::(.+)/);
         if (match) {
             tagMatch = match;
             break;
@@ -100,7 +100,7 @@ export function generateDiagram(context: DiagramCommandContext): DiagramResult &
     let tagMatch: RegExpMatchArray | null = null;
     
     for (let i = 0; i < lines.length; i++) {
-        const match = lines[i].match(/\/\/@::(.+)/);
+        const match = lines[i].match(/\/\/\s*@::(.+)/);
         if (match) {
             tagMatch = match;
             break;

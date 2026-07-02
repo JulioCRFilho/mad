@@ -64,7 +64,7 @@ export function createSaveHandler(context: vscode.ExtensionContext) {
         let tagMatch: RegExpMatchArray | null = null;
         
         for (let i = 0; i < lines.length; i++) {
-            const match = lines[i].match(/\/\/@::(.+)/);
+            const match = lines[i].match(/\/\/\s*@::(.+)/);
             if (match) {
                 tagMatch = match;
                 break;

@@ -9,7 +9,7 @@ export function extractCodeLine(document: vscode.TextDocument, tagLine: number):
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     let j = tagLine + 1;
-    while (j < lines.length && lines[j].match(/\/\/@/)) {
+    while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
         j++;
     }
     if (j < lines.length) {
@@ -26,7 +26,7 @@ export function extractSQLBlock(document: vscode.TextDocument, tagLine: number):
     const lines = text.split(/\r?\n/);
 
     let j = tagLine + 1;
-    while (j < lines.length && lines[j].match(/\/\/@/)) {
+    while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
         j++;
     }
 
@@ -35,7 +35,7 @@ export function extractSQLBlock(document: vscode.TextDocument, tagLine: number):
     const codeLines: string[] = [];
     while (j < lines.length) {
         const line = lines[j];
-        if (line.match(/\/\/@/)) break;
+        if (line.match(/\/\/\s*@/)) break;
         codeLines.push(line);
         if (line.includes(';')) break;
         j++;

@@ -1,7 +1,5 @@
 import { filterAllNodes } from '../../diagram/parser';
 import { validateDiagram, ValidationResult } from '../../diagram/validator';
-import { findRelatedTags } from './helpers';
-import { ProcessedNode } from '../../diagram/parser';
 
 export type { ValidationResult } from '../../diagram/validator';
 
@@ -35,12 +33,12 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         let targetIds: string[] = [];
         let description: string | null = null;
         
-        const normalMatch = line.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
-        const implicitMatch = line.match(/\/\/@->([\w.]+)/);
-        const explicitMatch = line.match(/\/\/@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
-        const sequenceDoubleMatch = line.match(/\/\/@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
-        const classMatch = line.match(/\/\/@(<\|--|--|\*--|o--|-->)([\w.]+)/);
-        const classInlineMatch = line.match(/\/\/@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)(?::([^\n]+))?/);
+        const normalMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
+        const implicitMatch = line.match(/\/\/\s*@->([\w.]+)/);
+        const explicitMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
+        const sequenceDoubleMatch = line.match(/\/\/\s*@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
+        const classMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--|-->)([\w.]+)/);
+        const classInlineMatch = line.match(/\/\/\s*@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)(?::([^\n]+))?/);
         
         if (classInlineMatch) {
             tagId = `${classInlineMatch[1]}->${classInlineMatch[3]}`;
@@ -126,9 +124,9 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
                 // Skip empty lines
                 if (nextLine.trim().length === 0) continue;
                 // If we find another MAD tag, check if it's also a connection (stacked) or a class declaration (valid)
-                if (nextLine.match(/\/\/@/)) {
+                if (nextLine.match(/\/\/\s*@/)) {
                     // Check if the next tag is also a connection tag (invalid stacking)
-                    const nextTagMatch = nextLine.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
+                    const nextTagMatch = nextLine.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
                     if (nextTagMatch) {
                         const nextTagId = nextTagMatch[1];
                         // Check if this looks like a connection tag (contains -> or --> or <|-- or --)
@@ -157,7 +155,7 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
             // Skip empty lines
             if (nextLine.trim().length === 0) continue;
             // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
-            if (nextLine.match(/\/\/@/)) {
+            if (nextLine.match(/\/\/\s*@/)) {
                 issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
@@ -197,13 +195,13 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): str
             if (trimmed.length === 0) continue;
             
             // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
-            if (nextLine.match(/\/\/@/)) {
+            if (nextLine.match(/\/\/\s*@/)) {
                 issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
             
-            // Found a regular comment line (// but not //@)
-            if (trimmed.startsWith('//') && !trimmed.startsWith('//@')) {
+            // Found a regular comment line (// but not //@ or // @)
+            if (trimmed.startsWith('//') && !trimmed.match(/\/\/\s*@/)) {
                 foundCommentBetween = true;
                 continue; // Keep checking for code
             }

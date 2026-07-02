@@ -6,7 +6,6 @@ import { MADDocumentSymbolProvider } from './src/core/ui/document-symbols';
 import { MADFoldingProvider } from './src/core/ui/folding-provider';
 import { MADDiagramPanel } from './src/core/ui/diagram-panel';
 import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
-import { validateDiagramCounts } from './src/core/commands/shared/validation';
 import { log, getOutputChannel } from './src/core/log';
 import { SUPPORTED_LANGUAGES } from './src/core/languages';
 import { createSaveHandler, saveToOutputFile } from './src/core/save-handler';
@@ -121,7 +120,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const document = editor.document;
             const lineText = document.lineAt(lineNumber).text;
-            const tagMatch = lineText.match(/\/\/@([\w.]+)/);
+            const tagMatch = lineText.match(/\/\/\s*@([\w.]+)/);
             if (!tagMatch) return;
 
             const fullId = tagMatch[1];
@@ -154,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const document = editor.document;
             const firstLine = document.lineAt(0).text;
-            const tagMatch = firstLine.match(/\/\/@::(.+)/);
+            const tagMatch = firstLine.match(/\/\/\s*@::(.+)/);
             if (!tagMatch) {
                 vscode.window.showWarningMessage('File does not contain MAD diagram tag.');
                 return;
@@ -384,7 +383,7 @@ export async function activate(context: vscode.ExtensionContext) {
         
         // Check if the cursor is EXACTLY on the tag
         const lineText = editor.document.lineAt(currentLine).text;
-        const tagMatch = lineText.match(/\/\/\s?@([\w.]+)/);
+        const tagMatch = lineText.match(/\/\/\s*@([\w.]+)/);
         if (!tagMatch) return;
         
         // Check if the cursor position is WITHIN the tag text (more strict)

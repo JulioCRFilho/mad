@@ -25,7 +25,7 @@ export class MADDecorationManager {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
-            if (line.match(/^\s*\/\/@/)) {
+            if (line.match(/^\s*\/\/\s*@/)) {
                 const range = new vscode.Range(i, 0, i, 0);
                 decorations.push({
                     range: range,

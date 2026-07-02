@@ -18,8 +18,8 @@ export class MADFoldingProvider implements vscode.FoldingRangeProvider {
         while (i < lines.length) {
             const line = lines[i];
 
-            // Detects start of //@ tag
-            const isTag = line.match(/\/\/@([\w.]+)/);
+            // Detects start of //@ tag (with optional space)
+            const isTag = line.match(/\/\/\s*@([\w.]+)/);
             if (!isTag) {
                 i++;
                 continue;
@@ -28,7 +28,7 @@ export class MADFoldingProvider implements vscode.FoldingRangeProvider {
             // Encontra o bloco de tags consecutivas
             const startLine = i;
             let endLine = i;
-            while (endLine < lines.length && lines[endLine].match(/\/\/@/)) {
+            while (endLine < lines.length && lines[endLine].match(/\/\/\s*@/)) {
                 endLine++;
             }
             endLine--; // last tag line
