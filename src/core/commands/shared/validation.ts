@@ -119,16 +119,28 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
     for (const tag of allTags) {
         // Check both entry nodes and connection tags for stacking
         if (tag.isConnection) {
-            // For connection tags, check if they're stacked (no code between them)
+            // For connection tags, check if they're stacked (another connection tag immediately after)
             let hasCodeBetween = false;
             for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
                 const nextLine = lines[j];
                 // Skip empty lines
                 if (nextLine.trim().length === 0) continue;
-                // If we find another MAD tag, this is stacked
+                // If we find another MAD tag, check if it's also a connection (stacked) or a class declaration (valid)
                 if (nextLine.match(/\/\/@/)) {
-                    issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
-                    break;
+                    // Check if the next tag is also a connection tag (invalid stacking)
+                    const nextTagMatch = nextLine.match(/\/\/@([\w.]+)(?::([^\n]+))?/);
+                    if (nextTagMatch) {
+                        const nextTagId = nextTagMatch[1];
+                        // Check if this looks like a connection tag (contains -> or --> or <|-- or --)
+                        const isNextTagConnection = /->|-->|<\|--|--/.test(nextTagId);
+                        if (isNextTagConnection) {
+                            issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
+                            break;
+                        }
+                        // Otherwise it's a class/node declaration, which is valid
+                        hasCodeBetween = true;
+                        break;
+                    }
                 }
                 // Found actual code
                 hasCodeBetween = true;
@@ -232,7 +244,7 @@ export function findMissingConnections(allTags: TagInfo[], diagramType: string):
     if (!shouldHaveConnections) return issues;
     
     // Count nodes and connections
-    const nodes = allTags.filter(t => !t.isConnection && !/^\d+$/.test(t.id));
+    const nodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id));
     const connections = allTags.filter(t => t.isConnection);
     
     // If there are nodes but no connections, warn the user
