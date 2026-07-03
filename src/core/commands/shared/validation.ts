@@ -136,8 +136,13 @@ export function countDiagramElements(mermaidCode: string): { nodes: number; conn
 /**
  * Checks for orphan tags (entry nodes without code below)
  */
-export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
+export function findOrphanTags(allTags: TagInfo[], lines: string[], diagramType?: string): string[] {
     const issues: string[] = [];
+    const typeKey = (diagramType || '').toLowerCase().replace(/\s+/g, '');
+    // For classDiagram and erDiagram, stacked tags are the normal pattern —
+    // multiple MAD tags collectively describe a single entity before the code.
+    const skipStackingCheck = typeKey.startsWith('classdiagram') || typeKey.startsWith('erdiagram');
+
     for (const tag of allTags) {
         // Check both entry nodes and connection tags for stacking
         if (tag.isConnection) {
@@ -172,6 +177,10 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
         }
         
         if (!/\d/.test(tag.id)) continue;
+
+        // For classDiagram and erDiagram, stacked tags are the normal, expected pattern.
+        // Multiple tags (members, relationships) are placed above a single code block.
+        if (skipStackingCheck) continue;
         
         let hasCode = false;
         for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
@@ -199,12 +208,19 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[]): string[] {
  * Checks that tags are properly positioned directly above code, not separated by comments.
  * A tag should be followed by code (or another tag), not by blank lines or regular comments.
  */
-export function findTagPlacementIssues(allTags: TagInfo[], lines: string[]): string[] {
+export function findTagPlacementIssues(allTags: TagInfo[], lines: string[], diagramType?: string): string[] {
     const issues: string[] = [];
+    const typeKey = (diagramType || '').toLowerCase().replace(/\s+/g, '');
+    // For classDiagram and erDiagram, stacked tags are the normal pattern —
+    // multiple MAD tags collectively describe a single entity before the code.
+    const skipStackingCheck = typeKey.startsWith('classdiagram') || typeKey.startsWith('erdiagram');
     
     for (const tag of allTags) {
         // Only check numbered entry nodes (Provider1, Provider1.1, etc.)
         if (tag.isConnection || !/\d/.test(tag.id)) continue;
+        
+        // For classDiagram and erDiagram, stacked tags are the normal, expected pattern.
+        if (skipStackingCheck) continue;
         
         // Look at the next few lines after the tag
         const checkRange = Math.min(tag.line + 3, lines.length);
@@ -324,18 +340,24 @@ function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
 function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
 
-    // Collect declared participants (groups without numbers, excluding connection IDs)
+    // Collect participants the SAME way the sequence generator does:
+    // 1. For each numbered entry node (e.g. Handler1, Handler2), add its group ID (e.g. Handler)
+    // 2. For each connection, add both source and target
+    // This mirrors the generator's logic: it only renders participants that are
+    // reachable via connections or serve as a method participant group.
     const participants = new Set<string>();
+    
+    // First: groups from numbered entry nodes match the generator
     for (const tag of allTags) {
-        if (!tag.isConnection && !/\d/.test(tag.id)) {
-            participants.add(tag.id);
+        if (!tag.isConnection && /^[a-zA-Z_]+\d+$/.test(tag.id)) {
+            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
+            if (groupMatch) {
+                participants.add(groupMatch[1]);
+            }
         }
     }
 
-    // The generator also auto-adds any connection source/target that isn't already a
-    // declared group as an implicit participant (e.g. external systems like "S3" used
-    // via //@Storage->1>S3:Label without ever declaring //@S3). Count those too, so the
-    // expected node count matches what Mermaid actually renders.
+    // Second: all sources and targets from connections
     for (const tag of allTags) {
         if (tag.isConnection && tag.id.includes('->')) {
             const [source, target] = tag.id.split('->');
@@ -482,9 +504,9 @@ export function validateDiagramCounts(
     
     // Orphan and reference checks still use raw tags
     const allTags = parseAllTags(documentText, lines);
-    issues.push(...findOrphanTags(allTags, lines));
+    issues.push(...findOrphanTags(allTags, lines, diagramType));
     issues.push(...findInvalidReferences(allTags));
-    issues.push(...findTagPlacementIssues(allTags, lines));
+    issues.push(...findTagPlacementIssues(allTags, lines, diagramType));
     issues.push(...findMissingConnections(allTags, diagramType));
     
     return issues;

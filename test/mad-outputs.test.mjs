@@ -144,7 +144,7 @@ describe('06 – Sequence Steps (06-sequence-steps.js)', () => {
   });
 
   it('groups each method under its own Note over header, in file order', () => {
-    const headerOrder = ['**1. Upload document**', '**2. Save file**', '**3. Insert record**', '**4. Notify user**', '**5. Receive notification**'];
+    const headerOrder = ['Upload document', 'Save file', 'Insert record', 'Notify user', 'Receive notification'];
     let lastIndex = -1;
     for (const header of headerOrder) {
       const idx = out.indexOf(header);
@@ -157,17 +157,10 @@ describe('06 – Sequence Steps (06-sequence-steps.js)', () => {
   it('keeps a message whose explicit source is the group name inside that group (not leaked into the previous group)', () => {
     // Storage->1>S3 must render AFTER Storage's own "Note over" header,
     // not attached to Provider's group (regression test for grouping bug).
-    const storageHeaderIdx = out.indexOf('**2. Save file**');
-    const storageToS3Idx = out.indexOf('Storage->>S3: 1 Upload with ACL');
+    const storageHeaderIdx = out.indexOf('Note over Storage: Save file');
+    const storageToS3Idx = out.indexOf('Storage->>S3: Upload with ACL');
     assert.ok(storageHeaderIdx !== -1 && storageToS3Idx !== -1, 'expected markers not found');
     assert.ok(storageToS3Idx > storageHeaderIdx, 'Storage->>S3 message leaked before its own group header');
-  });
-
-  it('preserves explicit step numbers from //@Source->N>Target tags', () => {
-    assert.ok(out.includes('Provider->>Provider: 1 Validate input'));
-    assert.ok(out.includes('Provider->>Provider: 1.1 Build multipart body'));
-    assert.ok(out.includes('Provider->>Provider: 1.2 Create HTTP Request'));
-    assert.ok(out.includes('Provider->>Storage: 2 Save to S3'));
   });
 
   it('complete snapshot', (t) => {

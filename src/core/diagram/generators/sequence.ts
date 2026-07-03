@@ -251,15 +251,10 @@ export const sequenceGenerator: DiagramGenerator = {
             }
 
             // Section header
-            mermaid += `    Note over ${group.methodParticipant}: **${methodCounter}. ${group.methodLabel}**\n`;
+            mermaid += `    Note over ${group.methodParticipant}: ${group.methodLabel}\n`;
 
-            let stepCounter = 0;
             for (const msg of group.messages) {
-                if (!msg.stepNumber) {
-                    stepCounter++;
-                }
-                const stepLabel = msg.stepNumber ? `${msg.stepNumber}` : `${stepCounter}`;
-                mermaid += `    ${msg.from}->>${msg.to}: ${stepLabel} ${msg.label}\n`;
+                mermaid += `    ${msg.from}->>${msg.to}: ${msg.label}\n`;
             }
         }
 
