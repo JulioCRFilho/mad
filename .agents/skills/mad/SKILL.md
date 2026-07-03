@@ -47,7 +47,7 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 ### 2.2 Sequence Diagram (`//@::sequenceDiagram`)
 *   **Placement**: Place tags directly above the code they describe (methods, function calls).
 *   **Participants**: Use `//@GroupName` directly above a class/component to define a participant. External systems (e.g., `S3`, `Email`) used as connection targets are **automatically added** as participants — no explicit `//@` tag is needed for them.
-*   **Self-Messages**: Numbered nodes (e.g., `//@Client1:Fetch data`) become self-messages (`Client->>Client: Fetch data`) and define a method group with its own `Note over` header.
+*   **Function Groups**: Numbered nodes (e.g., `//@Client1:Fetch data`) define a function group rendered inside a `rect` block with a `Note over` header. Step numbering restarts from 1 within each group. Self-messages are **not** automatically generated — only explicit connection tags produce messages.
 *   **Arrows**: All messages use `->>` (double arrow).
 *   **Connection Tags**: Use `//@Source->>Target:Label` for messages between participants. Use `//@->>Target:Label` when the source is the current method/participant.
 *   **Step Numbering in Arrow**: Use `//@Source->N>Target:Label` to embed a custom step number inside the arrow, where `N` is the step number (e.g., `1`, `1.1`, `1.2`, `2`, etc.). The step number replaces the auto-generated hierarchical numbering for that message. Example: `//@Provider->1>Provider:Validate input` produces `Provider->>Provider: 1 Validate input`. This is useful when you need to group steps under specific sub-numbers (e.g., `1`, `1.1`, `1.2`) while maintaining the overall flow.
