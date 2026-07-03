@@ -1,23 +1,22 @@
 /**
- * Generates a sequence diagram with hierarchical grouping.
+ * Generates a sequence diagram with function-based visual grouping.
  *
- * Each method (numbered node like Provider1) becomes a visual group
- * with a `Note over` header and its own step numbering.
- * Groups are separated by an empty line for visual clarity.
- * No colored rect blocks are used to keep the diagram clean and readable.
+ * Each function (numbered node like Provider1) becomes a visually separated
+ * group using Mermaid `rect` blocks with border-only styling.
+ * Step numbering restarts from 1 within each group for independent flows.
  *
  * IMPORTANT: Connections whose explicit source is a GROUP name (e.g.
  * `//@Storage->1>S3:Upload with ACL`, where "Storage" is the group, not the
  * "Storage1" entry) get merged by the tag pipeline into the bare group node's
  * `.connections` array (matched by id). Since the group tag typically appears
  * BEFORE its own numbered entry tag in the file, iterating tags in their own
- * declaration order would misattach these connections to whatever method
- * group was active at that point (usually the PREVIOUS method).
+ * declaration order would misattach these connections to whatever function
+ * group was active at that point (usually the PREVIOUS function).
  *
  * To avoid this, we don't trust the tag's own line when placing a connection —
  * we use the connection's own recorded line (see ProcessedNode.connections[].line)
- * to build a single, correctly time-ordered stream of "start method" and
- * "message" events, then assign each message to whichever method group was
+ * to build a single, correctly time-ordered stream of "start function" and
+ * "message" events, then assign each message to whichever function group was
  * active at that connection's own line.
  */
 import { ProcessedNode } from '../parser';
@@ -55,7 +54,7 @@ export const sequenceGenerator: DiagramGenerator = {
         return diagramType.toLowerCase().startsWith('sequencediagram');
     },
     generate(tags: ProcessedNode[], diagramType: string): string {
-        let mermaid = `${diagramType}\n`;
+        let mermaid = '';
         const participantSet = new Set<string>();
         const participants: string[] = [];
 
@@ -188,13 +187,6 @@ export const sequenceGenerator: DiagramGenerator = {
                 };
                 groups.push(currentGroup);
 
-                // Self-message for the method entry
-                currentGroup.messages.push({
-                    from: ev.groupId,
-                    to: ev.groupId,
-                    label: tag.label || tag.description || tag.id
-                });
-
                 // Flush any pending connections that arrived before we knew the group
                 for (const pending of pendingConnections) {
                     currentGroup.messages.push(pending);
@@ -226,31 +218,47 @@ export const sequenceGenerator: DiagramGenerator = {
             });
         }
 
-        // Render participants
-        for (const p of participants) mermaid += `    participant ${p}\n`;
+        // Pre-compute which participants each group actually uses
+        const groupParticipants: Set<string>[] = groups.map(group => {
+            const used = new Set<string>();
+            used.add(group.methodParticipant);
+            for (const msg of group.messages) {
+                used.add(msg.from);
+                used.add(msg.to);
+            }
+            return used;
+        });
 
-        // Render groups with clean section headers
-        // Uses Note over for method labels, no colored rect blocks
+        // Render each group as an independent sequenceDiagram, separated by ---
         let methodCounter = 0;
         for (const group of groups) {
             methodCounter++;
 
-            // Add a separator between groups (empty line + dashed note)
+            // Only add the `---` separator between diagrams (not for the first real diagram
+            // since the initial `diagramType\n` already acts as the header)
             if (methodCounter > 1) {
-                mermaid += `    Note over ${group.methodParticipant}: ────\n`;
+                mermaid += `\n---\n`;
             }
+
+            mermaid += `sequenceDiagram\n`;
+
+            // Render only the participants this group uses (in consistent order)
+            const used = groupParticipants[methodCounter - 1];
+            for (const p of participants) {
+                if (used.has(p)) {
+                    mermaid += `    participant ${p}\n`;
+                }
+            }
+
+            // Section header
             mermaid += `    Note over ${group.methodParticipant}: **${methodCounter}. ${group.methodLabel}**\n`;
 
             let stepCounter = 0;
             for (const msg of group.messages) {
-                // Only auto-increment for messages without an explicit step number,
-                // so explicit numbers (e.g. "1", "1.1", "1.2") don't collide with auto-generated ones.
                 if (!msg.stepNumber) {
                     stepCounter++;
                 }
-                // Use custom step number if provided (e.g., from //@Provider->1.1>Provider:Label)
-                // Otherwise use auto-generated hierarchical numbering
-                const stepLabel = msg.stepNumber ? `${msg.stepNumber}` : `${methodCounter}.${stepCounter}`;
+                const stepLabel = msg.stepNumber ? `${msg.stepNumber}` : `${stepCounter}`;
                 mermaid += `    ${msg.from}->>${msg.to}: ${stepLabel} ${msg.label}\n`;
             }
         }

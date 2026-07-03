@@ -92,31 +92,45 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
  * Counts elements (nodes and connections) in Mermaid code
  */
 export function countDiagramElements(mermaidCode: string): { nodes: number; connections: number } {
-    let nodes = 0;
-    let connections = 0;
-    const diagramLines = mermaidCode.split(/\r?\n/);
-    for (const line of diagramLines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        
-        // Nodes
-        if (trimmed.startsWith('participant ')) { nodes++; continue; }
-        if (/^class\s+\w+/.test(trimmed)) { nodes++; continue; }
-        if (trimmed.startsWith('subgraph ')) { nodes++; continue; }
-        if (/^state\s+\w+/.test(trimmed) && !trimmed.includes(':')) { nodes++; continue; }
-        if (/^\w+\s*\{$/.test(trimmed)) { nodes++; continue; }
-        
-        // Connections - checks specific patterns
-        // Sequence: Client->>Server: message (participant ->>
-        if (/^\s*\w+\s*->>/.test(trimmed)) { connections++; continue; }
-        // State/Flowchart: State1 --> State2 : label (palavra -->)
-        if (/^\s*\w+\s*-->/.test(trimmed)) { connections++; continue; }
-        // Class: User -- Address : has (palavra -- ou <|--)
-        if (/^\s*\w+\s+(--|<\|--|\*--|o--)\s+\w+/.test(trimmed)) { connections++; continue; }
-        // ER: User ||--o{ Address (palavra ||--)
-        if (/^\s*\w+\s+\|\|--/.test(trimmed)) { connections++; continue; }
+    // Split on --- to handle multi-diagram output (e.g. sequence diagrams per function)
+    // Deduplicate participants and connections that repeat across sub-diagrams
+    const subDiagrams = mermaidCode.split(/^---$/m).map(s => s.trim()).filter(s => s.length > 0);
+    const uniqueNodes = new Set<string>();
+    const uniqueConnections = new Set<string>();
+
+    for (const code of subDiagrams) {
+        const diagramLines = code.split(/\r?\n/);
+        for (const line of diagramLines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            
+            // Nodes — deduplicate by name
+            if (trimmed.startsWith('participant ')) { 
+                uniqueNodes.add(trimmed); 
+                continue; 
+            }
+            if (/^class\s+\w+/.test(trimmed)) { uniqueNodes.add(trimmed); continue; }
+            if (trimmed.startsWith('subgraph ')) { uniqueNodes.add(trimmed); continue; }
+            if (/^state\s+\w+/.test(trimmed) && !trimmed.includes(':')) { uniqueNodes.add(trimmed); continue; }
+            if (/^\w+\s*\{$/.test(trimmed)) { uniqueNodes.add(trimmed); continue; }
+            
+            // Connections — deduplicate by full line content (excludes step label differences in multi-diagram mode)
+            // Sequence: Client->>Server: message
+            if (/^\s*\w+\s*->>/.test(trimmed)) { 
+                // Strip step number prefix (e.g. "1 ", "1.1 ") to deduplicate identical messages across diagrams
+                const deduped = trimmed.replace(/->>\s*\w+:\s*\d+(\.\d+)?\s*/, '->>$&'.replace(/.*?(\w+->>\w+):.*/, '$1:'));
+                uniqueConnections.add(trimmed.replace(/:\s*\d+(\.\d+)?\s*/, ': ')); 
+                continue; 
+            }
+            // State/Flowchart: State1 --> State2 : label
+            if (/^\s*\w+\s*-->/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+            // Class: User -- Address : has
+            if (/^\s*\w+\s+(--|<\|--|\*--|o--)\s+\w+/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+            // ER: User ||--o{ Address
+            if (/^\s*\w+\s+\|\|--/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+        }
     }
-    return { nodes, connections };
+    return { nodes: uniqueNodes.size, connections: uniqueConnections.size };
 }
 
 /**
@@ -334,71 +348,18 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    // In sequenceDiagram, the generator produces messages from 3 sources:
-    // 1. Direct connections: //@Source->Target:label
-    // 2. Entry nodes as self-messages: //@Group1:label → Group->>Group:label (only if Group is a participant)
-    // 3. Forward pointers (//@->Target) that get attached to the nearest entry node above them
-    // The generator deduplicates messages with identical (from, to, label) triples,
-    // so we must count unique triples to match what Mermaid actually renders.
+    // The sequence generator produces messages only from direct connection tags
+    // (//@Source->Target:label, //@Source->>Target:label, //@Source->N>Target:label).
+    // Self-messages from entry nodes are no longer generated (functions are split
+    // into independent sub-diagrams via ---).
     const uniqueMessages = new Set<string>();
 
-    // 1. Direct connections: //@Source->>Target:label or //@Source->Target:label
     for (const tag of allTags) {
         if (tag.isConnection && tag.id.includes('->')) {
             const [source, target] = tag.id.split('->');
             if (source && target) {
                 const label = tag.description || 'message';
                 uniqueMessages.add(`${source.trim()}->>${target.trim()}:${label}`);
-            }
-        }
-    }
-
-    // 2. Entry nodes become self-messages from their parent group
-    //    Ex: //@UploadDocument1:Build multipart body → UploadDocument->>UploadDocument: Build multipart body
-    //    Only if the parent group is a declared participant (matching generator logic)
-    //    Note: matches ANY numbered node (Provider1, Provider1.1, Provider1.2, etc.)
-    for (const tag of allTags) {
-        if (!tag.isConnection && /\d/.test(tag.id)) {
-            const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
-            if (groupMatch) {
-                const groupId = groupMatch[1];
-                // Only create self-message if the group is a participant
-                if (participants.has(groupId)) {
-                    const label = tag.description || tag.id;
-                    uniqueMessages.add(`${groupId}->>${groupId}:${label}`);
-                }
-            }
-        }
-    }
-
-    // 3. Forward pointers (//@->Target) attached to the nearest numbered node above them
-    //    Ex: //@Provider1.1:Check recipient ID followed by //@->Provider → Provider->>Provider: Check recipient ID
-    //    The generator's processForwardPointers associates each forward pointer with the
-    //    closest numbered retro node above it (including sequence nodes), but only if that
-    //    node's parent group is a participant.
-    const numberedTags = allTags.filter(t => !t.isConnection && /\d/.test(t.id));
-    for (const tag of allTags) {
-        if (!tag.isConnection || !tag.id.startsWith('->') || tag.id === '->') continue;
-        const targetId = tag.id.substring(2); // strip "->"
-        if (!targetId) continue;
-
-        // Find the closest numbered tag above this forward pointer
-        let closestEntry: { id: string; line: number } | null = null;
-        for (const n of numberedTags) {
-            if (n.line < tag.line && (!closestEntry || n.line > closestEntry.line)) {
-                closestEntry = { id: n.id, line: n.line };
-            }
-        }
-
-        if (closestEntry) {
-            const groupMatch = closestEntry.id.match(/^([a-zA-Z_]+)\d+/);
-            if (groupMatch) {
-                const groupId = groupMatch[1];
-                // Only create message if the parent group is a participant (matching generator logic)
-                if (participants.has(groupId)) {
-                    const label = tag.description || closestEntry.id;
-                    uniqueMessages.add(`${groupId}->>${targetId}:${label}`);
-                }
             }
         }
     }

@@ -87,6 +87,16 @@ export class MADDiagramPanel {
             .replace(/`/g, '\\`')
             .replace(/\$/g, '\\$');
 
+        // Split code on --- to render multiple diagrams in the same preview
+        const diagrams = mermaidCode
+            .split(/^---$/m)
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+
+        const mermaidDivs = diagrams.length <= 1
+            ? `<div class="mermaid">${mermaidCode}</div>`
+            : diagrams.map((code, i) => `<div class="mermaid" id="mermaid-${i}">${code}</div>`).join('\n                ');
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -209,8 +219,8 @@ export class MADDiagramPanel {
         <span class="status" id="status"></span>
     </div>
     <div class="mermaid-container" id="mermaidContainer">
-        <div class="mermaid" id="mermaidContent">
-            ${mermaidCode}
+        <div class="mermaid-wrapper" id="mermaidContent">
+            ${mermaidDivs}
         </div>
     </div>
     <script>
@@ -235,9 +245,12 @@ export class MADDiagramPanel {
             }
         });
 
-        // Render diagram after webview is fully loaded
+        // Render all diagrams after webview is fully loaded
         window.addEventListener('load', async () => {
-            await mermaid.run({ nodes: [document.getElementById('mermaidContent')] });
+            const nodes = document.querySelectorAll('.mermaid');
+            if (nodes.length > 0) {
+                await mermaid.run({ nodes: Array.from(nodes) });
+            }
         });
 
         function setStatus(msg, isError) {
@@ -248,9 +261,11 @@ export class MADDiagramPanel {
         }
 
         function updateTransform() {
-            const el = document.getElementById('mermaidContent');
-            el.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${currentZoom})\`;
-            el.style.transformOrigin = 'center top';
+            const el = document.querySelector('.mermaid-wrapper');
+            if (el) {
+                el.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${currentZoom})\`;
+                el.style.transformOrigin = 'center top';
+            }
             document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
         }
 
