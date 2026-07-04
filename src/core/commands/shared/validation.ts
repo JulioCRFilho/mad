@@ -33,16 +33,24 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         let targetIds: string[] = [];
         let description: string | null = null;
         
-        const normalMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
-        const implicitMatch = line.match(/\/\/\s*@->([\w.]+)/);
+        // IMPORTANT: Check all connection patterns BEFORE the generic normalMatch.
+        // The normalMatch `//@ID` is greedy and will match the source portion of
+        // inline connections like `//@Client->Server` (capturing just `Client`),
+        // preventing the connection patterns from ever being evaluated.
+        
         // Step-number arrow (e.g. //@Provider->1>Provider:Validate input or //@Provider->1.1>Provider:Label)
         // IMPORTANT: must be checked BEFORE explicitMatch, otherwise the generic
         // "//@Source->Target" regex greedily (mis)matches the step number as the target ID.
         const stepMatch = line.match(/\/\/\s*@([\w.]+)->([\d.]+)>([\w.]+)(?::([^\n]+))?/);
-        const explicitMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
         const sequenceDoubleMatch = line.match(/\/\/\s*@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
-        const classMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--|-->)([\w.]+)/);
+        // Sequence implicit reverse: //@->>Target (double-arrow version of implicit)
+        const implicitDoubleMatch = line.match(/\/\/\s*@->>([\w.]+)(?::([^\n]+))?/);
+        const explicitMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
+        const implicitMatch = line.match(/\/\/\s*@->([\w.]+)/);
         const classInlineMatch = line.match(/\/\/\s*@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)(?::([^\n]+))?/);
+        const classMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--|-->)([\w.]+)/);
+        // Generic normal node: //@ID:comment (MUST be checked LAST)
+        const normalMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
         
         if (classInlineMatch) {
             tagId = `${classInlineMatch[1]}->${classInlineMatch[3]}`;
@@ -64,8 +72,14 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
             isConnection = true;
             targetIds.push(explicitMatch[2]);
             description = explicitMatch[3] ? explicitMatch[3].trim() : null;
+        } else if (implicitDoubleMatch) {
+            // //@->>Target (sequence double-arrow implicit reverse)
+            tagId = `->>${implicitDoubleMatch[1]}`;
+            isConnection = true;
+            targetIds.push(implicitDoubleMatch[1]);
+            description = implicitDoubleMatch[2] ? implicitDoubleMatch[2].trim() : null;
         } else if (implicitMatch) {
-
+            // //@->Target (implicit reverse)
             tagId = `->${implicitMatch[1]}`;
             isConnection = true;
             targetIds.push(implicitMatch[1]);
