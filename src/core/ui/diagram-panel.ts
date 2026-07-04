@@ -93,9 +93,12 @@ export class MADDiagramPanel {
             .map(s => s.trim())
             .filter(s => s.length > 0);
 
+        // Placeholder divs — populated from JS via mermaid.render() so
+        // the Mermaid code is never parsed as HTML (which would decode
+        // entities like & back to bare &, breaking the renderer).
         const mermaidDivs = diagrams.length <= 1
-            ? `<div class="mermaid">${mermaidCode}</div>`
-            : diagrams.map((code, i) => `<div class="mermaid" id="mermaid-${i}">${code}</div>`).join('\n                ');
+            ? `<div class="mermaid" id="mermaid-0"></div>`
+            : diagrams.map((_code, i) => `<div class="mermaid" id="mermaid-${i}"></div>`).join('\n                ');
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -243,11 +246,24 @@ export class MADDiagramPanel {
             }
         });
 
-        // Render all diagrams after webview is fully loaded
+        // Render all diagrams from the JS variable (NOT from HTML content)
+        // using mermaid.render(). This avoids the browser's HTML parser from
+        // decoding & back to bare &, which breaks the Mermaid renderer.
+        const DIAGRAMS = MERMAID_CODE.split('---').map(s => s.trim()).filter(s => s.length > 0);
+        if (DIAGRAMS.length === 0) DIAGRAMS.push(MERMAID_CODE);
+
         window.addEventListener('load', async () => {
-            const nodes = document.querySelectorAll('.mermaid');
-            if (nodes.length > 0) {
-                await mermaid.run({ nodes: Array.from(nodes) });
+            const divs = document.querySelectorAll('.mermaid');
+            for (let i = 0; i < Math.min(divs.length, DIAGRAMS.length); i++) {
+                try {
+                    const code = DIAGRAMS[i];
+                    const { svg } = await mermaid.render('mermaid-svg-' + i, code);
+                    divs[i].innerHTML = svg;
+                } catch (err) {
+                    const errMsg = (err.message || String(err)).replace(/</g, '&' + 'lt;');
+                    divs[i].innerHTML = '<div style="color:#F44747;padding:20px;font-family:sans-serif">' +
+                        '<strong>Mermaid render error</strong><br>' + errMsg + '</div>';
+                }
             }
         });
 

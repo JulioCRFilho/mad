@@ -1,14 +1,17 @@
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator, extractNumbersFromId } from './types';
 
-/** Sanitises a label for Mermaid: escapes ampersands, replaces em/en dashes. */
+/** Sanitises a label for Mermaid: replaces special characters that break
+ *  the browser renderer (ampersands, parentheses, em/en dashes). */
 function sanitizeLabel(label: string): string {
     return label
-        .replace(/&/g, '&' + 'amp;')  // & → & (bare & breaks browser renderer)
-        .replace(/\u2014/g, '-')  // em dash → hyphen
-        .replace(/\u2013/g, '-')  // en dash → hyphen
-        .replace(/"/g, '"')
-        .replace(/\n/g, ' ');
+        .replace(/&/g, ' and')      // & → and (avoids HTML entity issues)
+        .replace(/[()]/g, '')       // strip () — breaks Mermaid edge labels
+        .replace(/\u2014/g, '-')    // em dash → hyphen
+        .replace(/\u2013/g, '-')    // en dash → hyphen
+        .replace(/"/g, '\'')        // " → '
+        .replace(/\n/g, ' ')
+        .replace(/\s{2,}/g, ' ');   // collapse double+ spaces from replacements
 }
 
 export const flowchartGenerator: DiagramGenerator = {
