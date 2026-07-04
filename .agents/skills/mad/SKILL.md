@@ -20,8 +20,16 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
     *   All external service calls
     *   All state transitions
     *   Incomplete documentation defeats the purpose of MAD diagrams
+    *   ⚠️ **Exception**: Pure data structs, trivial UI builders, and one-line utility methods do NOT need every field/micro-step tagged. Apply 100% coverage to the **meaningful code paths** (branches, error handling, external calls). A flat list of independent static methods with no flow between them may not benefit from a diagram at all — consider skipping MAD tags entirely for such files.
 *   **Tag Format**: Use `//@` or `// @` (with space) for all MAD tags.
 *   **Self-Correction**: Always `cat /tmp/mad-diagram.mermaid` after saving. If the header `%%% VALIDATION ISSUES` exists, analyze the error, fix the tags, and re-save.
+*   **Parser Behavior — Group Name Digit Splitting**: ⚠️ **CRITICAL** - The parser splits group names at the first digit using regex `^([a-zA-Z_]+)\d+$` (in `src/core/commands/shared/helpers.ts`). The character class `[a-zA-Z_]+` greedily consumes underscores. This means:
+    *   `BuildV5` → group `BuildV` + node `5` (❌ group `BuildV` was never declared)
+    *   `Step0` → group `Step` + node `0` (❌ group `Step` was never declared)
+    *   `CurrentPaymentProvider_1` → group `CurrentPaymentProvider_` + node `1` (❌ trailing underscore)
+    *   `PagarMe_1` → group `PagarMe_` + node `1` (❌ trailing underscore)
+    *   **Workaround**: Choose names where the text before the final digit forms a valid declared group. Use `//@Steps` + `//@Steps0` (not `//@Step` + `//@Step0`). Avoid trailing underscores before digits. For external systems in sequence diagrams, use bare names (e.g., `//@Pagarme`) — they work as connection targets even without `_1` suffix.
+*   **Validation False Positives**: The `Connections(N) ≠ Diagram(M)` warning is a **known false positive** caused by deduplication when identical `(source, target, label)` triples appear in multiple places (e.g., two different methods use the same self-message label). If the diagram shows all expected participants and flows, ignore this warning.
 
 ---
 
@@ -32,7 +40,8 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **Groups**: Use `//@GroupName` directly above a class/block to create a `subgraph`.
 *   **Entry Nodes**: Use `//@Group1:Label` directly above methods for main nodes inside subgraphs (e.g., `//@Entry1:Handle login` above the method).
 *   **Sequence Nodes**: Use `//@Group1.1:Label` directly above sub-methods for sub-steps (e.g., `//@Entry1.1:Verify 2FA`).
-*   **Synthetic Nodes**: Use `//@NodeName_1:Label` for standalone nodes outside groups (e.g., `//@Pagarme_1:Pagar.me V5 API`). The `_1` suffix is required to distinguish synthetic nodes from groups. These are the **only** way to represent external systems (APIs, databases, services) that are not code classes.
+*   **Synthetic Nodes**: Use `//@NodeName_1:Label` for standalone nodes outside groups. The `_1` suffix is required to distinguish synthetic nodes from groups. These are the **only** way to represent external systems (APIs, databases, services) that are not code classes.
+    *   ⚠️ **Parser limitation**: Names like `Pagarme_1` or `Database_1` may be parsed as group `Pagarme_` / `Database_` due to trailing underscore capture. If you encounter `"X_1" belongs to group "X_"` errors, use bare `//@Pagarme` and `//@Pagarme->>Pagarme:...` in sequence diagrams instead, which works correctly.
 *   **Group vs Node Distinction**:
     *   `//@GroupName` → creates a `subgraph` (container for nodes)
     *   `//@GroupName:Label` → creates an entry **node** inside the group
@@ -48,7 +57,7 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **Placement**: Place tags directly above the code they describe (methods, function calls).
 *   **Participants**: Use `//@GroupName` directly above a class/component to define a participant. External systems (e.g., `S3`, `Email`) used as connection targets are **automatically added** as participants — no explicit `//@` tag is needed for them.
 *   **Function Groups**: Numbered nodes (e.g., `//@Client1:Fetch data`) define a function group rendered inside a `rect` block with a `Note over` header. Step numbering restarts from 1 within each group. Self-messages are **not** automatically generated — only explicit connection tags produce messages.
-*   **Arrows**: All messages use `->>` (double arrow).
+*   **Arrows**: All messages use `->>` (double arrow). ⚠️ **Never** use `->` in sequence diagrams — it's flowchart syntax and will cause `"Target has not been declared"` errors.
 *   **Connection Tags**: Use `//@Source->>Target:Label` for messages between participants. Use `//@->>Target:Label` when the source is the current method/participant.
 *   **Step Numbering in Arrow**: Use `//@Source->N>Target:Label` to embed a custom step number inside the arrow, where `N` is the step number (e.g., `1`, `1.1`, `1.2`, `2`, etc.). The step number replaces the auto-generated hierarchical numbering for that message. Example: `//@Provider->1>Provider:Validate input` produces `Provider->>Provider: 1 Validate input`. This is useful when you need to group steps under specific sub-numbers (e.g., `1`, `1.1`, `1.2`) while maintaining the overall flow.
 *   **Implicit Grouping**: Each message is grouped under whichever numbered method (e.g., `Provider1`) its connection tag appears **inside**, based on the tag's position in the file. A connection using the group name as source (e.g., `//@Storage->1>S3:Upload`) will correctly belong to the `Storage` method — not leaked into the previous method.
@@ -58,16 +67,19 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 *   **Placement**: Place tags directly above the code they describe (class definitions, methods).
 *   **Classes**: Use `//@GroupName` directly above a class definition.
 *   **Methods**: Use `//@Group1:Label` directly above methods for internal class methods (rendered as `+<Label>()` where Label is the text after the colon).
+*   ⚠️ **Every class must have at least one `//@GroupN:Label` entry node.** Classes with only `//@GroupName` (no numbered methods/fields) will produce Mermaid `Empty class definition` errors.
 *   **Relationships**: 
     *   Association: `//@Source-->Target:Label` or `//@--Target:Label` (inside class)
     *   Inheritance: `//@<|--Target:Label` (means "current class inherits from Target")
     *   Composition: `//@Source*--Target:Label`
     *   Aggregation: `//@Sourceo--Target:Label` or `//@Source o--Target:Label`
+    *   ⚠️ **Relationship targets must be declared in the same file.** Cross-file relationships (e.g., connecting `PaymentGatewayImpl-->repositories.OrderRepository`) will produce Mermaid errors since the target class isn't defined in that diagram.
 
 ### 2.4 State Diagram (`//@::stateDiagram-v2`)
 *   **Placement**: Place tags directly above the code they describe (state classes, methods).
 *   **States**: Use `//@GroupName` directly above the class representing the state.
 *   **Actions**: Use `//@Group1:Label` directly above methods for actions within a state (rendered as `ActionId: Label` where ActionId has all spaces removed from the label text).
+*   ⚠️ **Action labels must use simple identifiers** (single words or camelCase like `PersonalInfo` or `validateData`). Labels with spaces, dashes, or special characters (e.g., `Etapa 0 — Dados pessoais`) will produce malformed Mermaid syntax (`tGe[a.shape] is not a function`). Keep labels short and alphanumeric.
 *   **Transitions**: Use `//@Source->Target:Label` directly above the code to define state changes (rendered as `Source --> Target: Label`).
 
 ### 2.5 ER Diagram (`//@::erDiagram`)
@@ -229,16 +241,67 @@ class PaymentService {
 }
 ```
 
+### ❌ DON'T: Stack connection tags on entry node lines (1 tag per code line)
+```dart
+//@Group1:Build payload    // ✓ Entry node
+//@Group1->Group2:Call API // ❌ Stacked on previous entry node — no code between tags
+```
+```dart
+//@::graph TD
+//@Build
+class MyClass {
+  //@Build1:Do thing
+  //@Build1->Steps:Call   // ❌ Two tags stacked above the same `return` statement
+  @override
+  Widget build() {
+    return ...
+  }
+}
+```
+
+### ✅ DO: Move connection tags to call sites (1:1 tag-to-code ratio)
+```dart
+//@Group1:Build payload   // ✓ Entry node above method
+void build() {
+  //@Group1->Group2:Call API  // ✓ Connection tag above the actual call
+  callAPI();
+}
+```
+```dart
+//@::graph TD
+//@Build
+class MyClass {
+  //@Build
+  //@Build1:Do thing
+  @override
+  Widget build() {
+    // ... code ...
+    //@Build1->Steps:Call  // ✓ Connection tag above the actual method call
+    _buildStepContent(...);
+  }
+}
+```
+
 ---
 
 ## 4. Agent Execution Checklist
 1.  **Identify**: Choose the diagram type that best fits the code's logic.
+    *   `sequenceDiagram` — for request/response flows, method call chains, external API calls
+    *   `graph LR/TD` — for pipelines, step-by-step processes, method call trees
+    *   `classDiagram` — for struct relationships, inheritance, composition
+    *   `stateDiagram-v2` — for validation state machines, lifecycle states
+    *   `erDiagram` — for SQL schema documentation
+    *   **Consider skipping MAD tags entirely** for files with only independent static utilities, pure data structs, or boilerplate UI code with no interesting flow.
 2.  **Declare**: Place `//@::[type]` anywhere in the file.
 3.  **Implement**: Apply the specific syntax rules for that type (as defined in section 2).
     *   ⚠️ **CRITICAL**: Place ALL tags directly above the code they describe
     *   ⚠️ **CRITICAL**: Do NOT group tags in a header section
-    *   ⚠️ **CRITICAL**: Place connection tags directly above the group/class definition
-    *   ⚠️ **CRITICAL**: Document 100% of code paths - every method, every branch, every error handler
-    *   ⚠️ **CRITICAL**: Use synthetic nodes (`//@Name_1:Label`) for external systems, not groups
+    *   ⚠️ **CRITICAL**: Each tag must be directly above its own code line (1:1 ratio) — never stack two tags above the same line
+    *   ⚠️ **CRITICAL**: Document all meaningful code paths — every method, every branch, every error handler
+    *   ⚠️ **CRITICAL**: Use bare participant names (`//@Pagarme`, `//@Database`) for external systems in sequence diagrams. Synthetic node syntax (`//@Name_1:Label`) works for flowcharts but may cause parsing issues in sequence diagrams.
 4.  **Validate**: Save the file, run `cat /tmp/mad-diagram.mermaid`, and resolve any `%%% VALIDATION ISSUES` immediately.
-5.  **Verify**: Ensure all nodes have connections where appropriate and the diagram tells a complete story with no gaps.
+    *   If the only validation issue is `Connections(N) ≠ Diagram(M)`: this is a **known false positive** from deduplication. Check that the diagram shows all expected participants and flows — if yes, ignore the warning.
+    *   If you see `"X_N" belongs to group "X_"`: the parser split the name at a digit and captured a trailing underscore. Rename to avoid the digit-after-letter pattern (e.g., `Steps0` works if `//@Steps` is declared).
+    *   If you see `Empty class definition`: add at least one `//@GroupN:Label` entry node inside the class.
+    *   If you see `tGe[a.shape] is not a function`: a state diagram action label has special characters. Keep labels to simple alphanumeric identifiers.
+5.  **Verify**: Ensure all nodes have connections where appropriate, no empty subgraphs exist, and the diagram tells a complete story with no gaps.
