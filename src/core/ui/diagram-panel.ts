@@ -183,8 +183,6 @@ export class MADDiagramPanel {
             justify-content: center;
             min-height: 200px;
             width: 100%;
-            transform-origin: center top;
-            will-change: transform;
         }
         .zoom-controls {
             display: flex;
@@ -263,8 +261,8 @@ export class MADDiagramPanel {
         function updateTransform() {
             const el = document.querySelector('.mermaid-wrapper');
             if (el) {
-                el.style.transform = \`translate(\${translateX}px, \${translateY}px) scale(\${currentZoom})\`;
-                el.style.transformOrigin = 'center top';
+                el.style.zoom = currentZoom;
+                el.style.transform = \`translate(\${translateX}px, \${translateY}px)\`;
             }
             document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
         }
@@ -395,8 +393,8 @@ export class MADDiagramPanel {
 
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
+            const dx = (e.clientX - startX) / currentZoom;
+            const dy = (e.clientY - startY) / currentZoom;
             translateX = initialTranslateX + dx;
             translateY = initialTranslateY + dy;
             updateTransform();
