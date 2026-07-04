@@ -116,18 +116,18 @@ export function countDiagramElements(mermaidCode: string): { nodes: number; conn
             
             // Connections — deduplicate by full line content (excludes step label differences in multi-diagram mode)
             // Sequence: Client->>Server: message
-            if (/^\s*\w+\s*->>/.test(trimmed)) { 
+            if (/^\s*[\w.]+\s*->>/.test(trimmed)) { 
                 // Strip step number prefix (e.g. "1 ", "1.1 ") to deduplicate identical messages across diagrams
-                const deduped = trimmed.replace(/->>\s*\w+:\s*\d+(\.\d+)?\s*/, '->>$&'.replace(/.*?(\w+->>\w+):.*/, '$1:'));
+                const deduped = trimmed.replace(/->>\s*[\w.]+:\s*\d+(\.\d+)?\s*/, '->>$&'.replace(/.*?([\w.]+->>[\w.]+):.*/, '$1:'));
                 uniqueConnections.add(trimmed.replace(/:\s*\d+(\.\d+)?\s*/, ': ')); 
                 continue; 
             }
             // State/Flowchart: State1 --> State2 : label
-            if (/^\s*\w+\s*-->/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+            if (/^\s*[\w.]+\s*-->/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
             // Class: User -- Address : has
-            if (/^\s*\w+\s+(--|<\|--|\*--|o--)\s+\w+/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+            if (/^\s*[\w.]+\s+(--|<\|--|\*--|o--)\s+[\w.]+/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
             // ER: User ||--o{ Address
-            if (/^\s*\w+\s+\|\|--/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
+            if (/^\s*[\w.]+\s+\|\|--/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
         }
     }
     return { nodes: uniqueNodes.size, connections: uniqueConnections.size };
@@ -426,14 +426,34 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     }
     
     // 2. Explicit connections from tags (lines 111-120 of the generator)
-    // In flowchart, connections are tags of type //@->Target or //@Source->Target
+    // In flowchart, connections are tags of type //@->Target or //@Source->Target.
+    // Only count connections where both source (if present) and target exist as
+    // known nodes, matching the generator's behaviour — it skips edges whose
+    // endpoints are not in idToNodeId.
     const connectionTags = allTags.filter(t => t.isConnection);
+    // Build the set of known node IDs: groups AND all numbered nodes.
+    // The generator maps groups to their first child node, so groups are valid
+    // sources / targets as well.
+    const allKnownNodeIds = new Set<string>();
+    for (const group of groups) allKnownNodeIds.add(group.id);
+    for (const n of numbered) allKnownNodeIds.add(n.id);
+
     for (const conn of connectionTags) {
-        // Extract source and target from tag
-        // Format: "Source->Target" or "->Target"
-        if (conn.id.includes('->')) {
-            const key = conn.id;
-            edges.add(key);
+        if (!conn.id.includes('->')) continue;
+
+        const arrowIdx = conn.id.indexOf('->');
+        const source = conn.id.substring(0, arrowIdx);
+        const target = conn.id.substring(arrowIdx + 2);
+
+        // Source must be a known node (or empty for implicit //@->Target tags).
+        // For implicit tags the generator resolves the source via
+        // findRetroNodeForLine — we can't fully replicate that here, so we
+        // accept empty sources and let the target check guard correctness.
+        const sourceOk = source === '' || allKnownNodeIds.has(source);
+        const targetOk = allKnownNodeIds.has(target);
+
+        if (sourceOk && targetOk) {
+            edges.add(conn.id);
         }
     }
     
