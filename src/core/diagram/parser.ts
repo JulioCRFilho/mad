@@ -136,6 +136,20 @@ export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
             continue;
         }
 
+        // Checks //@Source--Target:comment (inline classDiagram association)
+        // Ex: //@Payload1--BuildCompanyInfo:uses
+        const arrowInlineDashMatch = line.match(/\/\/\s*@([\w.]+)--([\w.]+)(?::([^\n]+))?/);
+        if (arrowInlineDashMatch) {
+            allNodes.push({
+                line: i,
+                id: `${arrowInlineDashMatch[1]}->${arrowInlineDashMatch[2]}`,
+                description: arrowInlineDashMatch[3] ? arrowInlineDashMatch[3].trim() : null,
+                isArrow: true,
+                arrowPrefix: '--'
+            });
+            continue;
+        }
+
         // Checks //@Source*--Target:comment (inline classDiagram composition)
         // Ex: //@OnboardingPersonalInfo*--PhoneNumber:contains
         const arrowInlineStarMatch = line.match(/\/\/\s*@([\w.]+)\*--([\w.]+)(?::([^\n]+))?/);

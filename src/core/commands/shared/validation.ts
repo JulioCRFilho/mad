@@ -395,7 +395,15 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
 
 function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
-    const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
+    // Deduplicate groups by ID (matching filterAndSortNodes behavior in helpers.ts)
+    const groupNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id));
+    const seenIds = new Set<string>();
+    const uniqueGroups = groupNodes.filter(t => {
+        if (seenIds.has(t.id)) return false;
+        seenIds.add(t.id);
+        return true;
+    });
+    const expectedNodes = uniqueGroups.length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
@@ -411,15 +419,32 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     const edges = new Set<string>();
     
     // 1. Implicit connections from sequence nodes (lines 97-109 of the generator)
+    // Replicate the generator's idToNodeId resolution:
+    // - Every numbered node maps to itself
+    // - Groups map to their first child (same as generator line 72)
+    const idToNodeId = new Map<string, string>();
+    for (const n of [...entryNodes, ...sequenceNodes]) {
+        idToNodeId.set(n.id, n.id);
+    }
+    for (const group of groups) {
+        // Find first child: an entry or sequence node starting with group.id
+        const firstChild = [...entryNodes, ...sequenceNodes].find(n =>
+            n.id.toLowerCase() === group.id.toLowerCase() || n.id.toLowerCase().startsWith(group.id.toLowerCase())
+        );
+        if (firstChild) {
+            idToNodeId.set(group.id, idToNodeId.get(firstChild.id)!);
+        }
+    }
+    
     for (const seq of sequenceNodes) {
         const lastDot = seq.id.lastIndexOf('.');
         if (lastDot > 0) {
             const parentId = seq.id.substring(0, lastDot);
-            // Check if parentId exists as a group or node
-            const parentExists = groups.some(g => g.id === parentId) || 
-                                numbered.some(n => n.id === parentId);
-            if (parentExists) {
-                const key = `${parentId}->${seq.id}`;
+            const parentNode = idToNodeId.get(parentId);
+            const src = idToNodeId.get(seq.id);
+            // Replicate generator's self-reference check (parentNode !== src)
+            if (parentNode && src && parentNode !== src) {
+                const key = `${parentNode}->${src}`;
                 edges.add(key);
             }
         }
