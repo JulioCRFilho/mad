@@ -2,7 +2,7 @@
   "name": "mad",
   "displayName": "Mermaid Auto-Doccing",
   "description": "Extension to automatically generate documentation from Mermaid diagrams in VS Code.",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -61,11 +61,14 @@
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && NODE_PATH=test/mocks node --test test/mad-outputs.test.mjs"
   },
-  "devDependencies": {
-    "@types/node": "^18.0.0",
-    "@types/vscode": "^1.74.0",
-    "typescript": "^5.0.0"
-  },
+    "dependencies": {
+        "mermaid": "^10.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^18.0.0",
+        "@types/vscode": "^1.74.0",
+        "typescript": "^5.0.0"
+    },
   "repository": {
     "type": "git",
     "url": "https://github.com/JulioCRFilho/mad.git"

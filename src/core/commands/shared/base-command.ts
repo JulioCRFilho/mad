@@ -52,8 +52,8 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
     }
 
     /**
-     * Validates the Mermaid syntax specific to this diagram type
-     * Can be overridden by subclasses for custom validation
+     * Validates the Mermaid syntax using the real Mermaid parser (mermaid.parse).
+     * Can be overridden by subclasses for custom validation.
      */
     protected validateMermaid(mermaidCode: string, diagramType: string): { valid: boolean; error?: string } {
         return validateMermaidForType(mermaidCode, diagramType);
@@ -111,7 +111,7 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
         // Step 5: Pre-display hook
         mermaidCode = this.beforeDisplay(mermaidCode, diagramType);
 
-        // Step 6: Validate Mermaid syntax
+        // Step 6: Validate Mermaid syntax using real parser (mermaid.parse)
         const mermaidValidation = this.validateMermaid(mermaidCode, diagramType);
         if (!mermaidValidation.valid) {
             return {
@@ -155,7 +155,7 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
         // Step 5: Pre-display hook
         mermaidCode = this.beforeDisplay(mermaidCode, diagramType);
 
-        // Step 6: Validate Mermaid syntax
+        // Step 6: Validate Mermaid syntax using real parser (mermaid.parse)
         const mermaidValidation = this.validateMermaid(mermaidCode, diagramType);
         if (!mermaidValidation.valid) {
             return {
