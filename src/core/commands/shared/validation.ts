@@ -492,7 +492,13 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         const targetOk = allKnownNodeIds.has(target);
 
         if (sourceOk && targetOk) {
-            edges.add(conn.id);
+            // Include label in the dedup key — the generator uses
+            // `${from}->${to}:${label}` as its dedup key, so multiple
+            // connections between same source/target with different
+            // labels produce distinct edges (e.g. self-connections
+            // //@Screen2->Screen2:Submit and //@Screen2->Screen2:Capture).
+            const key = conn.id + (conn.description ? ':' + conn.description : '');
+            edges.add(key);
         }
     }
     

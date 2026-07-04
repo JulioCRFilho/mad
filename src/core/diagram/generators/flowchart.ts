@@ -48,22 +48,24 @@ export const flowchartGenerator: DiagramGenerator = {
                 entry.id.toLowerCase() === group.id.toLowerCase() || entry.id.toLowerCase().startsWith(group.id.toLowerCase())
             );
 
-            for (const entry of groupEntryNodes) {
-                const nodeId = entry.id;
-                const safeLabel = entry.label.replace(/"/g, '"').replace(/\n/g, ' ');
-                idToNodeId.set(entry.id, nodeId);
-                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
-            }
+        for (const entry of groupEntryNodes) {
+            // Sanitise IDs for Mermaid — dots are not valid in flowchart node IDs
+            const nodeId = entry.id.replace(/\./g, '_');
+            const safeLabel = entry.label.replace(/"/g, '"').replace(/\n/g, ' ');
+            idToNodeId.set(entry.id, nodeId);
+            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+        }
 
-            const groupSequenceNodes = sortedSequenceNodes.filter(seq =>
-                seq.id.toLowerCase().startsWith(group.id.toLowerCase())
-            );
+        const groupSequenceNodes = sortedSequenceNodes.filter(seq =>
+            seq.id.toLowerCase().startsWith(group.id.toLowerCase())
+        );
 
-            for (const seq of groupSequenceNodes) {
-                const nodeId = seq.id;
-                const safeLabel = seq.label.replace(/"/g, '"').replace(/\n/g, ' ');
-                idToNodeId.set(seq.id, nodeId);
-                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+        for (const seq of groupSequenceNodes) {
+            // Sanitise IDs for Mermaid — dots are not valid in flowchart node IDs
+            const nodeId = seq.id.replace(/\./g, '_');
+            const safeLabel = seq.label.replace(/"/g, '"').replace(/\n/g, ' ');
+            idToNodeId.set(seq.id, nodeId);
+            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
             }
 
             // Maps the group to the first node in the group (for //@->Group connections)
