@@ -1,6 +1,16 @@
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator, extractNumbersFromId } from './types';
 
+/** Sanitises a label for Mermaid: escapes ampersands, replaces em/en dashes. */
+function sanitizeLabel(label: string): string {
+    return label
+        .replace(/&/g, '&' + 'amp;')  // & → & (bare & breaks browser renderer)
+        .replace(/\u2014/g, '-')  // em dash → hyphen
+        .replace(/\u2013/g, '-')  // en dash → hyphen
+        .replace(/"/g, '"')
+        .replace(/\n/g, ' ');
+}
+
 export const flowchartGenerator: DiagramGenerator = {
     type: 'flowchart',
     matches(diagramType: string): boolean {
@@ -48,27 +58,24 @@ export const flowchartGenerator: DiagramGenerator = {
                 entry.id.toLowerCase() === group.id.toLowerCase() || entry.id.toLowerCase().startsWith(group.id.toLowerCase())
             );
 
-        for (const entry of groupEntryNodes) {
-            // Sanitise IDs for Mermaid — dots are not valid in flowchart node IDs
-            const nodeId = entry.id.replace(/\./g, '_');
-            const safeLabel = entry.label.replace(/"/g, '"').replace(/\n/g, ' ');
-            idToNodeId.set(entry.id, nodeId);
-            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
-        }
-
-        const groupSequenceNodes = sortedSequenceNodes.filter(seq =>
-            seq.id.toLowerCase().startsWith(group.id.toLowerCase())
-        );
-
-        for (const seq of groupSequenceNodes) {
-            // Sanitise IDs for Mermaid — dots are not valid in flowchart node IDs
-            const nodeId = seq.id.replace(/\./g, '_');
-            const safeLabel = seq.label.replace(/"/g, '"').replace(/\n/g, ' ');
-            idToNodeId.set(seq.id, nodeId);
-            mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+            for (const entry of groupEntryNodes) {
+                const nodeId = entry.id.replace(/\./g, '_');
+                const safeLabel = sanitizeLabel(entry.label);
+                idToNodeId.set(entry.id, nodeId);
+                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
             }
 
-            // Maps the group to the first node in the group (for //@->Group connections)
+            const groupSequenceNodes = sortedSequenceNodes.filter(seq =>
+                seq.id.toLowerCase().startsWith(group.id.toLowerCase())
+            );
+
+            for (const seq of groupSequenceNodes) {
+                const nodeId = seq.id.replace(/\./g, '_');
+                const safeLabel = sanitizeLabel(seq.label);
+                idToNodeId.set(seq.id, nodeId);
+                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+            }
+
             const firstNode = groupEntryNodes[0] || groupSequenceNodes[0];
             if (firstNode) {
                 idToNodeId.set(group.id, idToNodeId.get(firstNode.id)!);
@@ -79,18 +86,20 @@ export const flowchartGenerator: DiagramGenerator = {
 
         for (const item of syntheticNodes) {
             const nodeId = `N${nodeIndex++}`;
-            const safeLabel = item.label.replace(/"/g, '"').replace(/\n/g, ' ');
+            const safeLabel = sanitizeLabel(item.label);
             idToNodeId.set(item.id, nodeId);
             mermaid += `    ${nodeId}["${safeLabel}"]\n`;
         }
 
         const edges = new Set<string>();
         const addEdge = (from: string, to: string, label?: string) => {
-            const key = label ? `${from}->${to}:${label}` : `${from}->${to}`;
+            const dedupLabel = label || '';
+            const key = dedupLabel ? `${from}->${to}:${dedupLabel}` : `${from}->${to}`;
             if (edges.has(key)) return;
             edges.add(key);
             if (label && label.trim()) {
-                mermaid += `    ${from} -->|${label.replace(/"/g, '"')}| ${to}\n`;
+                const safeLabel = sanitizeLabel(label);
+                mermaid += `    ${from} -->|${safeLabel}| ${to}\n`;
             } else {
                 mermaid += `    ${from} --> ${to}\n`;
             }

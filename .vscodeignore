@@ -1,0 +1,16 @@
+# Source files (not needed at runtime — only ./out is)
+src/**
+test/**
+*.ts
+tsconfig.json
+
+# Dev tooling
+.git/**
+.gitignore
+.envrc
+node_modules/.cache/**
+
+# We only need production dependencies
+# vsce automatically prunes devDependencies from node_modules
+# when it detects a package-lock.json — no explicit node_modules
+# exclusion needed.
