@@ -471,12 +471,6 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     // known nodes, matching the generator's behaviour — it skips edges whose
     // endpoints are not in idToNodeId.
     const connectionTags = allTags.filter(t => t.isConnection);
-    // Build the set of known node IDs: groups AND all numbered nodes.
-    // The generator maps groups to their first child node, so groups are valid
-    // sources / targets as well.
-    const allKnownNodeIds = new Set<string>();
-    for (const group of groups) allKnownNodeIds.add(group.id);
-    for (const n of numbered) allKnownNodeIds.add(n.id);
 
     for (const conn of connectionTags) {
         if (!conn.id.includes('->')) continue;
@@ -485,12 +479,13 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         const source = conn.id.substring(0, arrowIdx);
         const target = conn.id.substring(arrowIdx + 2);
 
-        // Source must be a known node (or empty for implicit //@->Target tags).
-        // For implicit tags the generator resolves the source via
-        // findRetroNodeForLine — we can't fully replicate that here, so we
-        // accept empty sources and let the target check guard correctness.
-        const sourceOk = source === '' || allKnownNodeIds.has(source);
-        const targetOk = allKnownNodeIds.has(target);
+        // Source and target must exist in idToNodeId (the generator's resolved
+        // node map). Empty groups without children are NOT in this map, so edges
+        // from them are correctly skipped — matching the generator's behaviour.
+        // For implicit tags (empty source), the generator resolves via
+        // findRetroNodeForLine — accept empty sources, check target only.
+        const sourceOk = source === '' || idToNodeId.has(source);
+        const targetOk = idToNodeId.has(target);
 
         if (sourceOk && targetOk) {
             // Include label in the dedup key — the generator uses
