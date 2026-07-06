@@ -9,6 +9,7 @@ import { filterAllNodes, readDiagramType } from './src/core/diagram/parser';
 import { log, getOutputChannel } from './src/core/log';
 import { SUPPORTED_LANGUAGES } from './src/core/languages';
 import { createSaveHandler, saveToOutputFile } from './src/core/save-handler';
+import { startServer, stopServer, getServerPort, isServerRunning } from './src/core/server';
 
 //@::graph TD
 
@@ -435,8 +436,47 @@ export async function activate(context: vscode.ExtensionContext) {
     if (vscode.window.activeTextEditor) {
         updateDecorations(vscode.window.activeTextEditor);
     }
+
+    //@Setup23:Start HTTP server for CLI agents
+    //@Setup23->Setup24:Server started → register status command
+    startServer(context).then(port => {
+        if (port !== null) {
+            log.info(`MAD HTTP server started on port ${port}`);
+        }
+    });
+
+    //@Setup24:Register showServerStatus command
+    const showServerStatusCommand = vscode.commands.registerCommand(
+        'mad.showServerStatus',
+        () => {
+            if (isServerRunning()) {
+                const port = getServerPort();
+                vscode.window.showInformationMessage(
+                    `🌐 MAD server running on http://127.0.0.1:${port}\n\n` +
+                    `Endpoints:\n` +
+                    `  GET  /health    — Liveness check\n` +
+                    `  POST /validate  — Validate a file's MAD tags`,
+                    { modal: false }
+                );
+            } else {
+                vscode.window.showInformationMessage(
+                    'MAD server is not running. Check mad.server.enabled setting.',
+                    'Open Settings'
+                ).then(selection => {
+                    if (selection === 'Open Settings') {
+                        vscode.commands.executeCommand(
+                            'workbench.action.openSettings',
+                            'mad.server'
+                        );
+                    }
+                });
+            }
+        }
+    );
+    context.subscriptions.push(showServerStatusCommand);
 }
 
 export function deactivate() {
+    stopServer();
     console.log('MAD has been deactivated');
 }

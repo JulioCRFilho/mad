@@ -23,14 +23,12 @@ export interface ProcessedNode {
 
 
 /**
- * Reads the diagram type from the file.
+ * Reads the diagram type from raw text.
  * Expected format: //@::DiagramType or // @::DiagramType
- * Example: //@::flowchart TD
- * Searches subsequent lines if not found on the first line.
+ * Searches all lines.
  * Returns "flowchart TD" as fallback if not found.
  */
-export function readDiagramType(document: vscode.TextDocument): string {
-    const text = document.getText();
+export function readDiagramTypeFromText(text: string): string {
     const lines = text.split(/\r?\n/);
     for (const line of lines) {
         const match = line.match(/\/\/\s*@::(.+)/);
@@ -42,11 +40,28 @@ export function readDiagramType(document: vscode.TextDocument): string {
 }
 
 /**
- * Filters all //@ or // @ nodes from the document
+ * Reads the diagram type from the file.
+ * Delegates to readDiagramTypeFromText.
+ */
+export function readDiagramType(document: vscode.TextDocument): string {
+    return readDiagramTypeFromText(document.getText());
+}
+
+/**
+ * Filters all //@ or // @ nodes from raw text.
+ * Works without a vscode.TextDocument so the HTTP server handler
+ * can use it directly.
+ */
+/**
+ * Filters all //@ or // @ nodes from the document.
+ * Delegates to filterAllNodesFromText.
  */
 export function filterAllNodes(document: vscode.TextDocument): NodeInfo[] {
+    return filterAllNodesFromText(document.getText());
+}
+
+export function filterAllNodesFromText(text: string): NodeInfo[] {
     const allNodes: NodeInfo[] = [];
-    const text = document.getText();
     const lines = text.split(/\r?\n/);
 
     for (let i = 0; i < lines.length; i++) {
