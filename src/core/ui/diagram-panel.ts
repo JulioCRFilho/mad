@@ -187,6 +187,10 @@ export class MADDiagramPanel {
             min-height: 200px;
             width: 100%;
         }
+        .mermaid svg {
+            max-width: 100%;
+            height: auto !important;
+        }
         .zoom-controls {
             display: flex;
             gap: 4px;
@@ -231,7 +235,7 @@ export class MADDiagramPanel {
         let translateY = 0;
         const ZOOM_STEP = 0.1;
         const MIN_ZOOM = 0.3;
-        const MAX_ZOOM = 3.0;
+        const MAX_ZOOM = 5.0;
 
         mermaid.initialize({
             startOnLoad: false,
@@ -430,6 +434,24 @@ export class MADDiagramPanel {
                 updateTransform();
             }
         }, { passive: false });
+
+        // Responsive resize — re-render on window resize to fit available space
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(async () => {
+                const divs = document.querySelectorAll('.mermaid');
+                for (let i = 0; i < Math.min(divs.length, DIAGRAMS.length); i++) {
+                    try {
+                        const code = DIAGRAMS[i];
+                        const { svg } = await mermaid.render('mermaid-svg-' + i + '-r', code);
+                        divs[i].innerHTML = svg;
+                    } catch (err) {
+                        // Keep existing render on error
+                    }
+                }
+            }, 100);
+        });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
