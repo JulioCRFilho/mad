@@ -435,9 +435,10 @@ export class MADDiagramPanel {
             }
         }, { passive: false });
 
-        // Responsive resize — re-render on window resize to fit available space
+        // Responsive resize — re-render when the container changes size
+        // (sidebar toggle, split pane resize, panel resize — all trigger this)
         let resizeTimeout;
-        window.addEventListener('resize', () => {
+        const resizeObserver = new ResizeObserver(() => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(async () => {
                 const divs = document.querySelectorAll('.mermaid');
@@ -452,6 +453,7 @@ export class MADDiagramPanel {
                 }
             }, 100);
         });
+        resizeObserver.observe(container);
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
