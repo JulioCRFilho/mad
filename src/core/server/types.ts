@@ -14,10 +14,8 @@ export interface ValidateRequest {
 /** Successful validation response */
 export interface ValidateResponseSuccess {
     status: 'ok';
-    /** Path to the generated /tmp/mad-diagram.mermaid file */
-    outputFile: string;
-    /** The generated Mermaid code */
-    mermaidCode: string;
+    /** The generated Mermaid code (omitted when ?code=false) */
+    mermaidCode?: string;
     /** The diagram type detected (e.g. "graph TD", "sequenceDiagram") */
     diagramType: string;
     /** Validation warnings (tag count mismatches, orphan tags, etc.) */

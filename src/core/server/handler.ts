@@ -11,22 +11,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-    ValidateRequest,
     ValidateResponse,
-    ValidateResponseSuccess,
-    ValidateResponseError,
 } from './types';
-import { filterAllNodesFromText, splitNodes, readDiagramTypeFromText } from '../diagram/parser';
+import { filterAllNodesFromText, readDiagramTypeFromText } from '../diagram/parser';
 import { validateDiagram } from '../diagram/validator';
 import { validateMermaidSyntax } from '../diagram/mermaid-validator';
 import { generateMermaidDiagram } from '../diagram/generator';
 import {
-    parseAllTags,
     validateDiagramCounts,
 } from '../commands/shared/validation';
 import { findRelatedTagsFromText } from '../commands/shared/helpers';
-
-const OUTPUT_FILE = '/tmp/mad-diagram.mermaid';
 
 /**
  * Runs the full validation and generation pipeline for a file path.
@@ -122,27 +116,14 @@ export function validateFile(filePath: string): ValidateResponse {
     // Step 7: Run diagram count validation (warnings only — don't fail on these)
     const countIssues = validateDiagramCounts(text, mermaidCode, diagramType);
 
-    // Step 8: Write output file
-    try {
-        const encoder = new TextEncoder();
-        let finalContent = mermaidCode;
-        if (countIssues.length > 0) {
-            const header =
-                `%%% VALIDATION ISSUES (${countIssues.length})\n` +
-                countIssues.map(issue => `%%%   - ${issue}`).join('\n') +
-                `\n%%% END VALIDATION\n\n`;
-            finalContent = header + mermaidCode;
-        }
-        fs.writeFileSync(OUTPUT_FILE, finalContent, 'utf-8');
-    } catch (err) {
-        // Non-fatal: still return the generated code
-    }
+    // Note: /tmp/mad-diagram.mermaid is NOT written here — the save handler
+    // writes it when saving in VSCode. The HTTP endpoint returns mermaidCode
+    // directly in the JSON response, so agents never need the temp file.
 
     const durationMs = Date.now() - start;
 
     return {
         status: 'ok',
-        outputFile: OUTPUT_FILE,
         mermaidCode,
         diagramType,
         warnings: countIssues,

@@ -10,15 +10,30 @@ description: Generates Mermaid diagrams from code using //@ MAD tags, with speci
 For **every file** you tag, you MUST complete both phases. The task is INCOMPLETE until validation passes.
 
 ### Phase 1: MODIFY & SAVE
-Use `write_to_file` or `replace_in_file` to insert `//@` tags inline, directly above the code they describe. 1 ID tag per code line maximum. The write tool auto-saves, triggering diagram generation at `/tmp/mad-diagram.mermaid`.
+Modify the file to insert `//@` tags inline, directly above the code they describe. 1 ID tag per code line maximum.
 
-### Phase 2: VALIDATE
-Run `cat /tmp/mad-diagram.mermaid`. If `%%% VALIDATION ISSUES` appears in the header, fix the tags and re-write (loop back to Phase 1). Repeat until clean.
+### Phase 2: VALIDATE via HTTP endpoint
+The MAD extension runs an HTTP server on `127.0.0.1` with an auto-assigned port. Discover the port in `/tmp/mad-server.port`, then POST the file path for validation:
+
+```bash
+PORT=$(cat /tmp/mad-server.port)
+curl -s -X POST "http://127.0.0.1:$PORT/validate" \
+  -H "Content-Type: application/json" \
+  -d "{\"filePath\": \"/absolute/path/to/file.ts\"}"
+```
+
+The response is JSON with `status`, `warnings`, `mermaidCode`, `diagramType`, and `durationMs`.
+
+**Decision flow:**
+- `status: "ok"` with empty `warnings: []` → **done**, move to next file
+- `status: "ok"` with non-empty warnings → fix the issues, re-write, re-validate
+- `status: "error"` → fix the issue described in `message`/`details`, re-write, re-validate
+
+For lightweight validation (warning-only, omit mermaidCode): add `?code=false` to the URL.
 
 ### 🚫 FORBIDDEN
-- Writing tags without running `cat /tmp/mad-diagram.mermaid`
-- Batching files (shared output file overwrites previous results)
-- Declaring done before every file passes validation
+- Writing tags without running curl validation
+- Declaring done before every file returns `status: "ok"` with empty `warnings: []`
 
 ---
 
@@ -68,13 +83,13 @@ Run `cat /tmp/mad-diagram.mermaid`. If `%%% VALIDATION ISSUES` appears in the he
 3. **100% meaningful coverage**: Every method, branch, error path, and external call. Skip only pure data structs and trivial one-liners.
 4. **Parser digit-splitting**: Names like `BuildV5` → group `BuildV` + node `5`. Use `//@Steps` + `//@Steps0` (not `//@Step` + `//@Step0`). Avoid trailing underscores before digits.
 5. **Known false positive**: `Connections(N) ≠ Diagram(M)` from dedup — report it for fixing.
-6. **Self-diagnosis**: `"X_N" belongs to group "X_"` → rename. `Empty class definition` → add entry node. `tGe[a.shape]` → simplify action label. Output starts with `ERROR:` → fix tags.
+6. **Self-diagnosis**: `"X_N" belongs to group "X_"` → rename. `Empty class definition` → add entry node. `tGe[a.shape]` → simplify action label.
 
 ---
 
 ## Quick Execution Flow
 
-1. Choose diagram type → 2. Add `//@::[type]` directive → 3. Add inline tags near code → 4. Write file (auto-saves, triggers generator) → 5. `cat /tmp/mad-diagram.mermaid` → 6. Fix issues, re-write, re-validate → 7. Next file.
+1. Choose diagram type → 2. Add `//@::[type]` directive → 3. Add inline tags near code → 4. Write file → 5. `curl` the validate endpoint → 6. Check `status` and `warnings` → 7. Fix issues, re-write, re-validate → 8. Next file.
 
 ## Examples
 
