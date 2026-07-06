@@ -188,8 +188,14 @@ export class MADDiagramPanel {
             width: 100%;
         }
         .mermaid svg {
-            max-width: 100%;
+            width: 100% !important;
             height: auto !important;
+        }
+        .mermaid-wrapper {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            transform-origin: top left;
         }
         .zoom-controls {
             display: flex;
@@ -263,6 +269,18 @@ export class MADDiagramPanel {
                     const code = DIAGRAMS[i];
                     const { svg } = await mermaid.render('mermaid-svg-' + i, code);
                     divs[i].innerHTML = svg;
+                    // Strip all fixed sizing Mermaid applies, so CSS width:100% works.
+                    // Mermaid sets width/height attrs + inline max-width on SVG,
+                    // and wrapper divs with fixed inline styles.
+                    divs[i].querySelectorAll('[style*="max-width"]').forEach(el => {
+                        el.style.maxWidth = '';
+                    });
+                    const svgEl = divs[i].querySelector('svg');
+                    if (svgEl) {
+                        svgEl.setAttribute('width', '100%');
+                        svgEl.setAttribute('height', '100%');
+                        svgEl.style.maxWidth = '';
+                    }
                 } catch (err) {
                     const errMsg = (err.message || String(err)).replace(/</g, '&' + 'lt;');
                     divs[i].innerHTML = '<div style="color:#F44747;padding:20px;font-family:sans-serif">' +
@@ -281,8 +299,7 @@ export class MADDiagramPanel {
         function updateTransform() {
             const el = document.querySelector('.mermaid-wrapper');
             if (el) {
-                el.style.zoom = currentZoom;
-                el.style.transform = \`translate(\${translateX}px, \${translateY}px)\`;
+                el.style.transform = \`scale(\${currentZoom}) translate(\${translateX}px, \${translateY}px)\`;
             }
             document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
         }
@@ -413,8 +430,8 @@ export class MADDiagramPanel {
 
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            const dx = (e.clientX - startX) / currentZoom;
-            const dy = (e.clientY - startY) / currentZoom;
+            const dx = (e.clientX - startX);
+            const dy = (e.clientY - startY);
             translateX = initialTranslateX + dx;
             translateY = initialTranslateY + dy;
             updateTransform();
@@ -435,23 +452,16 @@ export class MADDiagramPanel {
             }
         }, { passive: false });
 
-        // Responsive resize — re-render when the container changes size
-        // (sidebar toggle, split pane resize, panel resize — all trigger this)
-        let resizeTimeout;
+        // Responsive resize: when the panel size changes (sidebar toggle, split resize),
+        // the SVG already has width:100% via CSS and width/height:100% attributes set
+        // post-render. This observer ensures any Mermaid wrapper divs also stay unstyled.
         const resizeObserver = new ResizeObserver(() => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(async () => {
-                const divs = document.querySelectorAll('.mermaid');
-                for (let i = 0; i < Math.min(divs.length, DIAGRAMS.length); i++) {
-                    try {
-                        const code = DIAGRAMS[i];
-                        const { svg } = await mermaid.render('mermaid-svg-' + i + '-r', code);
-                        divs[i].innerHTML = svg;
-                    } catch (err) {
-                        // Keep existing render on error
-                    }
+            document.querySelectorAll('.mermaid svg').forEach(svgEl => {
+                if (svgEl.getAttribute('width') !== '100%') {
+                    svgEl.setAttribute('width', '100%');
+                    svgEl.setAttribute('height', '100%');
                 }
-            }, 100);
+            });
         });
         resizeObserver.observe(container);
 
