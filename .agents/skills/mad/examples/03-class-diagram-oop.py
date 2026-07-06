@@ -25,8 +25,8 @@ class User:
         self.orders: list[Order] = []
 
     //@User1.1:add_address method
-    //@--Address:has
     def add_address(self, address: Address):
+        //@User1.1--Address:has
         self.addresses.append(address)
 
     //@User1.2:get_default_address method
@@ -37,25 +37,25 @@ class User:
         return self.addresses[0] if self.addresses else None
 
     //@User1.3:place_order method
-    //@->Order:Place order
     def place_order(self, cart):
+        //@User1.3->Order:Place order
         order = Order(self, cart.items, self.get_default_address())
         self.orders.append(order)
         return order
 
 //@Customer
 class Customer(User):
-    //@<|--User:inherits
     //@Customer1:__init__ method
     def __init__(self, name: str, email: str, phone: str, loyalty_tier: str = "bronze"):
+        //@Customer<|--User:inherits
         super().__init__(name, email, phone)
         self.loyalty_tier = loyalty_tier
         self.loyalty_points = 0
         self.wishlist: list[Product] = []
 
     //@Customer1.1:add_to_wishlist method
-    //@--Product:wishlist
     def add_to_wishlist(self, product):
+        //@Customer1.1--Product:wishlist
         if product not in self.wishlist:
             self.wishlist.append(product)
 
@@ -66,15 +66,15 @@ class Customer(User):
 
 //@Admin
 class Admin(User):
-    //@<|--User:inherits
     //@Admin1:__init__ method
     def __init__(self, name: str, email: str, phone: str, admin_level: int):
+        //@Admin<|--User:inherits
         super().__init__(name, email, phone)
         self.admin_level = admin_level
 
     //@Admin1.1:manage_product method
-    //@->Product:Manage
     def manage_product(self, product, action: str, **kwargs):
+        //@Admin1.1->Product:Manage
         if action == "update":
             product.update(**kwargs)
         elif action == "deactivate":
@@ -104,14 +104,14 @@ class Product:
 //@ShoppingCart
 class ShoppingCart:
     //@ShoppingCart1:__init__ method
-    //@--Customer:belongs to
     def __init__(self, customer):
+        //@ShoppingCart1--Customer:belongs to
         self.customer = customer
         self.items: list[CartItem] = []
 
     //@ShoppingCart1.1:add_item method
-    //@--CartItem:contains
     def add_item(self, product, quantity: int):
+        //@ShoppingCart1.1--CartItem:contains
         for item in self.items:
             if item.product == product:
                 item.quantity += quantity
@@ -125,8 +125,8 @@ class ShoppingCart:
 //@CartItem
 class CartItem:
     //@CartItem1:__init__ method
-    //@--Product:references
     def __init__(self, product, quantity: int):
+        //@CartItem1--Product:references
         self.product = product
         self.quantity = quantity
         self.added_at = datetime.now()
@@ -134,8 +134,8 @@ class CartItem:
 //@Order
 class Order:
     //@Order1:__init__ method
-    //@--Address:shipped to
     def __init__(self, user, items, shipping_address):
+        //@Order1--Address:shipped to
         self.user = user
         self.items = items
         self.shipping_address = shipping_address
@@ -161,10 +161,10 @@ class Order:
 //@Review
 class Review:
     //@Review1:__init__ method
-    //@--Customer:written by
-    //@--Product:reviews
     def __init__(self, customer, product, rating: int, comment: str):
+        //@Review1--Customer:written by
         self.customer = customer
+        //@Review1--Product:reviews
         self.product = product
         self.rating = max(1, min(5, rating))
         self.comment = comment
