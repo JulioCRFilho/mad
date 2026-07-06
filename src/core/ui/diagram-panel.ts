@@ -320,6 +320,8 @@ export class MADDiagramPanel {
 
         function resetZoom() {
             currentZoom = 1.0;
+            translateX = 0;
+            translateY = 0;
             updateZoom();
         }
 
