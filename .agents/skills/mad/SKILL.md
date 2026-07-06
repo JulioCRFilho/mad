@@ -41,19 +41,22 @@ For lightweight validation (warning-only, omit mermaidCode): add `?code=false` t
 
 | Diagram | Directive | Group | Node | Connection | MAD arrow |
 |---------|-----------|-------|------|------------|-----------|
-| Flowchart | `//@::graph LR` (or `TD`) | `//@Name` | `//@Name1:Label` | `//@Src->Target:Label` | `->` |
-| Sequence | `//@::sequenceDiagram` | `//@Name` | `//@Name1:Label` | `//@Src->>Target:Label` | `->>` |
-| Class | `//@::classDiagram` | `//@Name` | `//@Name1:Label` | `//@Src-->Target:Label` | `-->`, `<\|--`, `*--`, `o--`, `--` |
-| State | `//@::stateDiagram-v2` | `//@Name` (state) | `//@Name1:actionId` | `//@Src->Target:Label` | `->` |
-| ER | `//@::erDiagram` | `//@Name` (table) | — | `//@Src->Target:Label` | `->` |
+| Flowchart | `//@::graph LR` (or `TD`) | `//@Name` | `//@Name1:State` | `//@Src->Target:Action` | `->` |
+| Sequence | `//@::sequenceDiagram` | `//@Name` | `//@Name1:Label` | `//@Src->>Target:Action` | `->>` |
+| Class | `//@::classDiagram` | `//@Name` | `//@Name1:Member` | `//@Src-->Target:Relationship` | `-->`, `<\|--`, `*--`, `o--`, `--` |
+| State | `//@::stateDiagram-v2` | `//@Name` (state) | `//@Name1:actionId` | `//@Src->Target:Trigger` | `->` |
+| ER | `//@::erDiagram` | `//@Name` (table) | — | `//@Src->Target:Relationship` | `->` |
 
 **Arrow rules**: `->` is the default connector (flowchart, state, ER). `->>` is **exclusive to sequence** — using `->` in sequence diagrams causes `"Target has not been declared"` errors. `-->`, `<|--`, `*--`, `o--`, `--` are **exclusive to class** diagrams.
 
 ### Flowchart specifics
-- `//@Name` above a class → `subgraph`. `//@Name1:Label` above a method → node inside it.
-- `//@Name1.1:Label` → sub-step node.
-- `//@Ext_1:Label` → **synthetic node** for external systems (APIs, DBs). Required: `_1` suffix.
-- `//@->Target:Label` → implicit source (current node context).
+- `//@Name` above a class/block → `subgraph` container.
+- `//@Name1:State` above code → **node that represents a state or result** of the step.
+- `//@Name1.1:State` → sub-step state node.
+- `//@Ext_1:State` → **synthetic node** for external systems (APIs, DBs). Required: `_1` suffix.
+- `//@Src->Target:Action` → **transition/action** flowing between states.
+- `//@->Target:Action` → implicit source (current node context).
+- **Semantic labels**: Node labels answer "what is this state/result?". Arrow labels answer "what happens next?".
 
 ### Sequence specifics
 - `//@Name` above class → participant. External systems used as targets are auto-added.
@@ -68,7 +71,7 @@ For lightweight validation (warning-only, omit mermaidCode): add `?code=false` t
 
 ### State specifics
 - Action labels must be simple identifiers (camelCase, no spaces/special chars). Example: `validateData`, NOT `"Etapa 0 — Dados"`.
-- Transitions: `//@Src->Target:Label` → `Src --> Target: Label`.
+- Transitions use `//@Src->Target:Trigger` → `Src --> Target: Trigger`. The trigger label is the **action that causes the transition** (e.g. `Submit credentials`, `Auth failed`).
 
 ### ER specifics
 - Place `//@Name` above `CREATE TABLE` block. Columns are auto-parsed as attributes.
@@ -84,6 +87,7 @@ For lightweight validation (warning-only, omit mermaidCode): add `?code=false` t
 4. **Parser digit-splitting**: Names like `BuildV5` → group `BuildV` + node `5`. Use `//@Steps` + `//@Steps0` (not `//@Step` + `//@Step0`). Avoid trailing underscores before digits.
 5. **Known false positive**: `Connections(N) ≠ Diagram(M)` from dedup — report it for fixing.
 6. **Self-diagnosis**: `"X_N" belongs to group "X_"` → rename. `Empty class definition` → add entry node. `tGe[a.shape]` → simplify action label.
+7. **Labels are semantic**: Node labels (after `:`) describe **states or results** — what the system *is* or *has produced* (e.g. `Data validated`, `Error response`, `Mermaid code generated`). Arrow labels (after `:`) describe **transitions or actions** — what the system *does* (e.g. `Validate structure`, `Call generateDiagram`, `Return error`). A node label answers "what is this?"; an arrow label answers "what happens next?".
 
 ---
 
