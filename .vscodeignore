@@ -4,13 +4,21 @@ test/**
 *.ts
 tsconfig.json
 
+# Dev documentation and scripts
+tasks.md
+implementation_plan.md
+implementation_plan_server.md
+test-server.mjs
+scripts/
+
 # Dev tooling
 .git/**
 .gitignore
 .envrc
 node_modules/.cache/**
 
-# We only need production dependencies
-# vsce automatically prunes devDependencies from node_modules
-# when it detects a package-lock.json — no explicit node_modules
-# exclusion needed.
+# Bundle only production node_modules (vsce prunes devDependencies)
+# Exclude everything else at root and in node_modules
+node_modules/**
+!node_modules/mermaid/**
+# mermaid is the only runtime dependency needed
