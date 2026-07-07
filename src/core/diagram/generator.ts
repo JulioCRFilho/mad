@@ -1,3 +1,5 @@
+//@::classDiagram
+
 /**
  * SINGLE ENTRY POINT for Mermaid diagram generation.
  * 
@@ -16,5 +18,7 @@
  * 2. Add it to the array in ./generators/index.ts
  * 3. Done! The dispatcher will route automatically
  */
+//@GeneratorModule
 export { generateMermaidDiagram, registerGenerator, getGenerator } from './generators/index';
+//@GeneratorModule1:Re-export DiagramGenerator type
 export type { DiagramGenerator } from './generators/types';

@@ -1,3 +1,5 @@
+//@::classDiagram
+
 /**
  * DIAGRAM COMMAND - Main entry point (backward compatibility).
  *
@@ -26,19 +28,29 @@
  * 3. Register it in the array in commands/index.ts
  */
 
-// Re-exports everything from the new index.ts module for compatibility
+//@DiagramCommandModule
 export {
+    //@DiagramCommandModule1:Re-export validateAndDisplayDiagram
     validateAndDisplayDiagram,
+    //@DiagramCommandModule1.1:Re-export generateDiagram
     generateDiagram,
+    //@DiagramCommandModule1.2:Re-export registerCommandHandler
     registerCommandHandler,
+    //@DiagramCommandModule1.3:Re-export getHandler
     getHandler,
+    //@DiagramCommandModule1.4:Re-export FlowchartCommand
     FlowchartCommand,
+    //@DiagramCommandModule1.5:Re-export SequenceCommand
     SequenceCommand,
+    //@DiagramCommandModule1.6:Re-export ClassCommand
     ClassCommand,
+    //@DiagramCommandModule1.7:Re-export StateCommand
     StateCommand,
+    //@DiagramCommandModule1.8:Re-export ERCommand
     ERCommand,
 } from './index';
 
+//@DiagramCommandModule2:Re-export types
 export type {
     DiagramCommandContext,
     DiagramResult,

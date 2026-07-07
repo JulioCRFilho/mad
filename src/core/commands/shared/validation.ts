@@ -1,9 +1,12 @@
+//@::graph TD
+
 import { filterAllNodes } from '../../diagram/parser';
 import { validateDiagram, ValidationResult } from '../../diagram/validator';
 import { validateMermaidSyntax } from '../../diagram/mermaid-validator';
 
 export type { ValidationResult } from '../../diagram/validator';
 
+//@TagInfo
 export interface TagInfo {
     id: string;
     line: number;
@@ -16,16 +19,21 @@ export interface TagInfo {
 /**
  * Validates the MAD diagram structure
  */
+//@validateMADStructure
 export function validateMADStructure(document: import('vscode').TextDocument, prefix: string): ValidationResult {
     const allNodes = filterAllNodes(document);
     return validateDiagram(allNodes, prefix);
 }
 
 /**
- * Parses all MAD tags from text
+ * Parses all MAD tags from text, classifying each by its arrow type.
+ * Handles 8 different tag syntaxes: step-number, sequence double, implicit, explicit,
+ * class inline, class bare, and normal retro pointers.
  */
+//@parseAllTags
 export function parseAllTags(text: string, lines: string[]): TagInfo[] {
     const allTags: TagInfo[] = [];
+    //@parseAllTags1
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
@@ -34,25 +42,19 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         let targetIds: string[] = [];
         let description: string | null = null;
         
-        // IMPORTANT: Check all connection patterns BEFORE the generic normalMatch.
-        // The normalMatch `//@ID` is greedy and will match the source portion of
-        // inline connections like `//@Client->Server` (capturing just `Client`),
-        // preventing the connection patterns from ever being evaluated.
-        
-        // Step-number arrow (e.g. //@Provider->1>Provider:Validate input or //@Provider->1.1>Provider:Label)
-        // IMPORTANT: must be checked BEFORE explicitMatch, otherwise the generic
-        // "//@Source->Target" regex greedily (mis)matches the step number as the target ID.
+        //@parseAllTags1->parseAllTags1.1:Try 8 regex patterns
+        //@parseAllTags1.1
         const stepMatch = line.match(/\/\/\s*@([\w.]+)->([\d.]+)>([\w.]+)(?::([^\n]+))?/);
         const sequenceDoubleMatch = line.match(/\/\/\s*@([\w.]+)->>([\w.]+)(?::([^\n]+))?/);
-        // Sequence implicit reverse: //@->>Target (double-arrow version of implicit)
         const implicitDoubleMatch = line.match(/\/\/\s*@->>([\w.]+)(?::([^\n]+))?/);
         const explicitMatch = line.match(/\/\/\s*@([\w.]+)->([\w.]+)(?::([^\n]+))?/);
         const implicitMatch = line.match(/\/\/\s*@->([\w.]+)/);
         const classInlineMatch = line.match(/\/\/\s*@([\w.]+)(<\|--|--|\*--|o--|-->)([\w.]+)(?::([^\n]+))?/);
         const classMatch = line.match(/\/\/\s*@(<\|--|--|\*--|o--|-->)([\w.]+)/);
-        // Generic normal node: //@ID:comment (MUST be checked LAST)
         const normalMatch = line.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
         
+        //@parseAllTags1.1->parseAllTags1.2:Classify by match result
+        //@parseAllTags1.2
         if (classInlineMatch) {
             tagId = `${classInlineMatch[1]}->${classInlineMatch[3]}`;
             isConnection = true;
@@ -74,13 +76,11 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
             targetIds.push(explicitMatch[2]);
             description = explicitMatch[3] ? explicitMatch[3].trim() : null;
         } else if (implicitDoubleMatch) {
-            // //@->>Target (sequence double-arrow implicit reverse)
             tagId = `->>${implicitDoubleMatch[1]}`;
             isConnection = true;
             targetIds.push(implicitDoubleMatch[1]);
             description = implicitDoubleMatch[2] ? implicitDoubleMatch[2].trim() : null;
         } else if (implicitMatch) {
-            // //@->Target (implicit reverse)
             tagId = `->${implicitMatch[1]}`;
             isConnection = true;
             targetIds.push(implicitMatch[1]);
@@ -97,94 +97,84 @@ export function parseAllTags(text: string, lines: string[]): TagInfo[] {
         if (!tagId) continue;
         if (tagId.startsWith('::')) continue;
         
+        //@parseAllTags1.2->parseAllTags1.3:Append to tag array
+        //@parseAllTags1.3
         const tagInfo: TagInfo = { id: tagId, line: i, isConnection, targetIds, description };
         allTags.push(tagInfo);
     }
+    //@parseAllTags1.3->parseAllTags2:Return completed array
+    //@parseAllTags2:Parsed tags ready
     return allTags;
 }
 
 /**
  * Counts elements (nodes and connections) in Mermaid code
  */
+//@countDiagramElements
 export function countDiagramElements(mermaidCode: string): { nodes: number; connections: number } {
-    // Split on --- to handle multi-diagram output (e.g. sequence diagrams per function)
-    // Deduplicate participants and connections that repeat across sub-diagrams
+    //@countDiagramElements1:Split sub-diagrams by separator line
     const subDiagrams = mermaidCode.split(/^---$/m).map(s => s.trim()).filter(s => s.length > 0);
     const uniqueNodes = new Set<string>();
     const uniqueConnections = new Set<string>();
 
+    //@countDiagramElements1->countDiagramElements2:Scan each sub-diagram line by line
+    //@countDiagramElements2:Sub-diagrams fully scanned
     for (const code of subDiagrams) {
         const diagramLines = code.split(/\r?\n/);
         for (const line of diagramLines) {
             const trimmed = line.trim();
             if (!trimmed) continue;
             
-            // Nodes — deduplicate by name
-            if (trimmed.startsWith('participant ')) { 
-                uniqueNodes.add(trimmed); 
-                continue; 
-            }
+            //@countDiagramElements2->countDiagramElements2.1:Check for entity node patterns
+            //@countDiagramElements2.1
+            if (trimmed.startsWith('participant ')) { uniqueNodes.add(trimmed); continue; }
             if (/^class\s+\w+/.test(trimmed)) { uniqueNodes.add(trimmed); continue; }
             if (trimmed.startsWith('subgraph ')) { uniqueNodes.add(trimmed); continue; }
             if (/^state\s+\w+/.test(trimmed) && !trimmed.includes(':')) { uniqueNodes.add(trimmed); continue; }
             if (/^\w+\s*\{$/.test(trimmed)) { uniqueNodes.add(trimmed); continue; }
             
-            // Connections — deduplicate by full line content (excludes step label differences in multi-diagram mode)
-            // Sequence: Client->>Server: message
-            if (/^\s*[\w.]+\s*->>/.test(trimmed)) { 
-                // Strip step number prefix (e.g. "1 ", "1.1 ") to deduplicate identical messages across diagrams
-                const deduped = trimmed.replace(/->>\s*[\w.]+:\s*\d+(\.\d+)?\s*/, '->>$&'.replace(/.*?([\w.]+->>[\w.]+):.*/, '$1:'));
-                uniqueConnections.add(trimmed.replace(/:\s*\d+(\.\d+)?\s*/, ': ')); 
-                continue; 
-            }
-            // State/Flowchart: State1 --> State2 : label
+            //@countDiagramElements2->countDiagramElements2.2:Check for connection edge patterns
+            //@countDiagramElements2.2
+            if (/^\s*[\w.]+\s*->>/.test(trimmed)) { uniqueConnections.add(trimmed.replace(/:\s*\d+(\.\d+)?\s*/, ': ')); continue; }
             if (/^\s*[\w.]+\s*-->/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
-            // Class: User -- Address : has
             if (/^\s*[\w.]+\s+(--|<\|--|\*--|o--)\s+[\w.]+/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
-            // ER: User ||--o{ Address
             if (/^\s*[\w.]+\s+\|\|--/.test(trimmed)) { uniqueConnections.add(trimmed); continue; }
         }
     }
+    //@countDiagramElements2->countDiagramElements3:Return counted totals
+    //@countDiagramElements3:Node and connection counts returned
     return { nodes: uniqueNodes.size, connections: uniqueConnections.size };
 }
 
 /**
- * Checks for orphan tags (entry nodes without code below)
+ * Checks for orphan tags (entry nodes without code below) and stacked tags.
  */
+//@findOrphanTags
 export function findOrphanTags(allTags: TagInfo[], lines: string[], diagramType?: string): string[] {
     const issues: string[] = [];
     const typeKey = (diagramType || '').toLowerCase().replace(/\s+/g, '');
-    // For classDiagram and erDiagram, stacked tags are the normal pattern —
-    // multiple MAD tags collectively describe a single entity before the code.
     const skipStackingCheck = typeKey.startsWith('classdiagram') || typeKey.startsWith('erdiagram');
 
+    //@findOrphanTags1:Iterate all tags and check placement
     for (const tag of allTags) {
-        // Check both entry nodes and connection tags for stacking
         if (tag.isConnection) {
-            // For connection tags, check if they're stacked (another connection tag immediately after)
             let hasCodeBetween = false;
             for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
                 const nextLine = lines[j];
-                // Skip empty lines
                 if (nextLine.trim().length === 0) continue;
-                // If we find another MAD tag, check if it's also a connection (stacked) or a class declaration (valid)
                 if (nextLine.match(/\/\/\s*@/)) {
-                    // Check if the next tag is also a connection tag (invalid stacking)
                     const nextTagMatch = nextLine.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
                     if (nextTagMatch) {
                         const nextTagId = nextTagMatch[1];
-                        // Check if this looks like a connection tag (contains -> or --> or <|-- or --)
                         const isNextTagConnection = /->|-->|<\|--|--/.test(nextTagId);
                         if (isNextTagConnection) {
                             issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                             break;
                         }
-                        // Otherwise it's a class/node declaration, which is valid
                         hasCodeBetween = true;
                         break;
                     }
                 }
-                // Found actual code
                 hasCodeBetween = true;
                 break;
             }
@@ -193,21 +183,18 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[], diagramType?
         
         if (!/\d/.test(tag.id)) continue;
 
-        // For classDiagram and erDiagram, stacked tags are the normal, expected pattern.
-        // Multiple tags (members, relationships) are placed above a single code block.
         if (skipStackingCheck) continue;
         
+        //@findOrphanTags1->findOrphanTags2:Verify entry node has code below
+        //@findOrphanTags2:Entry node verified (or flagged)
         let hasCode = false;
         for (let j = tag.line + 1; j < Math.min(tag.line + 3, lines.length); j++) {
             const nextLine = lines[j];
-            // Skip empty lines
             if (nextLine.trim().length === 0) continue;
-            // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
             if (nextLine.match(/\/\/\s*@/)) {
                 issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
-            // Found actual code
             hasCode = true;
             break;
         }
@@ -216,28 +203,26 @@ export function findOrphanTags(allTags: TagInfo[], lines: string[], diagramType?
             issues.push(`Tag ${tag.id} (line ${tag.line + 1}) has no code below it`);
         }
     }
+    //@findOrphanTags2->findOrphanTags3:Return issue list
+    //@findOrphanTags3:Issues collected
     return issues;
 }
 
 /**
  * Checks that tags are properly positioned directly above code, not separated by comments.
- * A tag should be followed by code (or another tag), not by blank lines or regular comments.
  */
+//@findTagPlacementIssues
 export function findTagPlacementIssues(allTags: TagInfo[], lines: string[], diagramType?: string): string[] {
     const issues: string[] = [];
     const typeKey = (diagramType || '').toLowerCase().replace(/\s+/g, '');
-    // For classDiagram and erDiagram, stacked tags are the normal pattern —
-    // multiple MAD tags collectively describe a single entity before the code.
     const skipStackingCheck = typeKey.startsWith('classdiagram') || typeKey.startsWith('erdiagram');
     
+    //@findTagPlacementIssues1:Scan each tag's next lines
     for (const tag of allTags) {
-        // Only check numbered entry nodes (Provider1, Provider1.1, etc.)
         if (tag.isConnection || !/\d/.test(tag.id)) continue;
         
-        // For classDiagram and erDiagram, stacked tags are the normal, expected pattern.
         if (skipStackingCheck) continue;
         
-        // Look at the next few lines after the tag
         const checkRange = Math.min(tag.line + 3, lines.length);
         let foundCode = false;
         let foundCommentBetween = false;
@@ -246,22 +231,18 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[], diag
             const nextLine = lines[j];
             const trimmed = nextLine.trim();
             
-            // Skip empty lines
             if (trimmed.length === 0) continue;
             
-            // MAD tags must have code directly below (1:1 ratio) - no stacking allowed
             if (nextLine.match(/\/\/\s*@/)) {
                 issues.push(`Tag ${tag.id} (line ${tag.line + 1}) is stacked with other tags - each tag must be directly above its own code line (1:1 ratio)`);
                 break;
             }
             
-            // Found a regular comment line (// but not //@ or // @)
             if (trimmed.startsWith('//') && !trimmed.match(/\/\/\s*@/)) {
                 foundCommentBetween = true;
-                continue; // Keep checking for code
+                continue;
             }
             
-            // Found actual code
             if (!trimmed.startsWith('//')) {
                 foundCode = true;
                 if (foundCommentBetween) {
@@ -282,11 +263,12 @@ export function findTagPlacementIssues(allTags: TagInfo[], lines: string[], diag
 /**
  * Checks for diagrams with nodes but no connections
  */
+//@findMissingConnections
 export function findMissingConnections(allTags: TagInfo[], diagramType: string): string[] {
     const issues: string[] = [];
     const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
     
-    // Only check diagram types that should have connections
+    //@findMissingConnections1:Check if diagram type expects connections
     const shouldHaveConnections = 
         typeKey.startsWith('classdiagram') ||
         typeKey.startsWith('flowchart') ||
@@ -296,11 +278,11 @@ export function findMissingConnections(allTags: TagInfo[], diagramType: string):
     
     if (!shouldHaveConnections) return issues;
     
-    // Count nodes and connections
+    //@findMissingConnections1->findMissingConnections2:Count nodes vs connections
+    //@findMissingConnections2:Nodes-and-connections count ready
     const nodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id));
     const connections = allTags.filter(t => t.isConnection);
     
-    // If there are nodes but no connections, warn the user
     if (nodes.length > 0 && connections.length === 0) {
         issues.push(`Diagram has ${nodes.length} node(s) but no connections - did you forget to add relationship tags?`);
     }
@@ -309,15 +291,15 @@ export function findMissingConnections(allTags: TagInfo[], diagramType: string):
 }
 
 /**
- * Checks connections pointing to non-existent IDs
+ * Checks connections pointing to non-existent IDs.
+ * Two-pass: first collect all valid IDs, then validate each connection target.
  */
+//@findInvalidReferences
 export function findInvalidReferences(allTags: TagInfo[]): string[] {
     const issues: string[] = [];
     const validIds = new Set(allTags.map(t => t.id));
 
-    // Additionally, any identifier that appears as a source or target in a direct
-    // connection (//@Source->Target or //@Source->N>Target) is implicitly valid —
-    // the generator auto-adds these as participants without needing a //@ tag.
+    //@findInvalidReferences1:Collect valid IDs from all sources
     for (const tag of allTags) {
         if (tag.isConnection && tag.id.includes('->')) {
             const [source, target] = tag.id.split('->');
@@ -326,6 +308,8 @@ export function findInvalidReferences(allTags: TagInfo[]): string[] {
         }
     }
 
+    //@findInvalidReferences1->findInvalidReferences2:Validate each connection target
+    //@findInvalidReferences2:Target validation complete
     for (const tag of allTags) {
         if (!tag.isConnection) continue;
         for (const targetId of tag.targetIds) {
@@ -337,14 +321,18 @@ export function findInvalidReferences(allTags: TagInfo[]): string[] {
     return issues;
 }
 
-// ── Diagram type-specific validations ──
+// ── Diagram type-specific peer count validators ──
 
+//@validateClassDiagramCounts
 function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
+    //@validateClassDiagramCounts1:Count expected nodes (groups only)
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
+    //@validateClassDiagramCounts1->validateClassDiagramCounts2:Count connections and compare
+    //@validateClassDiagramCounts2:Connection count compared
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
         issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
@@ -352,17 +340,13 @@ function validateClassDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     return issues;
 }
 
+//@validateSequenceDiagramCounts
 function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
 
-    // Collect participants the SAME way the sequence generator does:
-    // 1. For each numbered entry node (e.g. Handler1, Handler2), add its group ID (e.g. Handler)
-    // 2. For each connection, add both source and target
-    // This mirrors the generator's logic: it only renders participants that are
-    // reachable via connections or serve as a method participant group.
     const participants = new Set<string>();
     
-    // First: groups from numbered entry nodes match the generator
+    //@validateSequenceDiagramCounts1:Extract participants from entry nodes
     for (const tag of allTags) {
         if (!tag.isConnection && /^[a-zA-Z_]+\d+$/.test(tag.id)) {
             const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
@@ -372,7 +356,8 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
         }
     }
 
-    // Second: all sources and targets from connections
+    //@validateSequenceDiagramCounts1->validateSequenceDiagramCounts2:Extract participants from connections
+    //@validateSequenceDiagramCounts2:All participants extracted
     for (const tag of allTags) {
         if (tag.isConnection && tag.id.includes('->')) {
             const [source, target] = tag.id.split('->');
@@ -385,10 +370,8 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    // The sequence generator produces messages only from direct connection tags
-    // (//@Source->Target:label, //@Source->>Target:label, //@Source->N>Target:label).
-    // Self-messages from entry nodes are no longer generated (functions are split
-    // into independent sub-diagrams via ---).
+    //@validateSequenceDiagramCounts2->validateSequenceDiagramCounts3:Dedup and count unique messages
+    //@validateSequenceDiagramCounts3:Unique messages counted
     const uniqueMessages = new Set<string>();
 
     for (const tag of allTags) {
@@ -408,9 +391,10 @@ function validateSequenceDiagramCounts(allTags: TagInfo[], diagramNodes: number,
     return issues;
 }
 
+//@validateFlowchartCounts
 function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
-    // Deduplicate groups by ID (matching filterAndSortNodes behavior in helpers.ts)
+    //@validateFlowchartCounts1:Count unique group nodes
     const groupNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id));
     const seenIds = new Set<string>();
     const uniqueGroups = groupNodes.filter(t => {
@@ -423,26 +407,23 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
     
-    // Simulates what the generator does to count expected connections
+    //@validateFlowchartCounts1->validateFlowchartCounts2:Classify tags by type
+    //@validateFlowchartCounts2:Tags classified
     const tagNodes = allTags.filter(t => !t.isConnection);
     const groups = tagNodes.filter(t => !/\d/.test(t.id));
     const numbered = tagNodes.filter(t => /\d/.test(t.id));
     const entryNodes = numbered.filter(t => /^[a-zA-Z]+[0-9]+$/.test(t.id));
     const sequenceNodes = numbered.filter(t => /\.[0-9]/.test(t.id));
     
-    // Counts unique connections that the generator will create
     const edges = new Set<string>();
     
-    // 1. Implicit connections from sequence nodes (lines 97-109 of the generator)
-    // Replicate the generator's idToNodeId resolution:
-    // - Every numbered node maps to itself
-    // - Groups map to their first child (same as generator line 72)
+    //@validateFlowchartCounts2->validateFlowchartCounts3:Build ID-to-node map
+    //@validateFlowchartCounts3:ID mapping built
     const idToNodeId = new Map<string, string>();
     for (const n of [...entryNodes, ...sequenceNodes]) {
         idToNodeId.set(n.id, n.id);
     }
     for (const group of groups) {
-        // Find first child: an entry or sequence node starting with group.id
         const firstChild = [...entryNodes, ...sequenceNodes].find(n =>
             n.id.toLowerCase() === group.id.toLowerCase() || n.id.toLowerCase().startsWith(group.id.toLowerCase())
         );
@@ -451,13 +432,14 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         }
     }
     
+    //@validateFlowchartCounts3->validateFlowchartCounts4:Add sequence parent-child edges
+    //@validateFlowchartCounts4:Sequence edges added
     for (const seq of sequenceNodes) {
         const lastDot = seq.id.lastIndexOf('.');
         if (lastDot > 0) {
             const parentId = seq.id.substring(0, lastDot);
             const parentNode = idToNodeId.get(parentId);
             const src = idToNodeId.get(seq.id);
-            // Replicate generator's self-reference check (parentNode !== src)
             if (parentNode && src && parentNode !== src) {
                 const key = `${parentNode}->${src}`;
                 edges.add(key);
@@ -465,13 +447,10 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         }
     }
     
-    // 2. Explicit connections from tags (lines 111-120 of the generator)
-    // In flowchart, connections are tags of type //@->Target or //@Source->Target.
-    // Only count connections where both source (if present) and target exist as
-    // known nodes, matching the generator's behaviour — it skips edges whose
-    // endpoints are not in idToNodeId.
     const connectionTags = allTags.filter(t => t.isConnection);
 
+    //@validateFlowchartCounts4->validateFlowchartCounts5:Add explicit connection edges
+    //@validateFlowchartCounts5:Explicit edges added
     for (const conn of connectionTags) {
         if (!conn.id.includes('->')) continue;
 
@@ -479,25 +458,17 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
         const source = conn.id.substring(0, arrowIdx);
         const target = conn.id.substring(arrowIdx + 2);
 
-        // Source and target must exist in idToNodeId (the generator's resolved
-        // node map). Empty groups without children are NOT in this map, so edges
-        // from them are correctly skipped — matching the generator's behaviour.
-        // For implicit tags (empty source), the generator resolves via
-        // findRetroNodeForLine — accept empty sources, check target only.
         const sourceOk = source === '' || idToNodeId.has(source);
         const targetOk = idToNodeId.has(target);
 
         if (sourceOk && targetOk) {
-            // Include label in the dedup key — the generator uses
-            // `${from}->${to}:${label}` as its dedup key, so multiple
-            // connections between same source/target with different
-            // labels produce distinct edges (e.g. self-connections
-            // //@Screen2->Screen2:Submit and //@Screen2->Screen2:Capture).
             const key = conn.id + (conn.description ? ':' + conn.description : '');
             edges.add(key);
         }
     }
     
+    //@validateFlowchartCounts5->validateFlowchartCounts6:Compare edge counts
+    //@validateFlowchartCounts6:Edge count compared
     const expectedConnections = edges.size;
     if (expectedConnections !== diagramConnections) {
         issues.push(`Connections(${expectedConnections}) ≠ Diagram(${diagramConnections})`);
@@ -506,12 +477,16 @@ function validateFlowchartCounts(allTags: TagInfo[], diagramNodes: number, diagr
     return issues;
 }
 
+//@validateStateDiagramCounts
 function validateStateDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
+    //@validateStateDiagramCounts1:Count expected nodes
     const expectedNodes = allTags.filter(t => !t.isConnection && !/\d/.test(t.id)).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
+    //@validateStateDiagramCounts1->validateStateDiagramCounts2:Count connections and compare
+    //@validateStateDiagramCounts2:Connection count compared
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
         issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
@@ -519,12 +494,16 @@ function validateStateDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     return issues;
 }
 
+//@validateERDiagramCounts
 function validateERDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagramConnections: number): string[] {
     const issues: string[] = [];
+    //@validateERDiagramCounts1:Count expected nodes
     const expectedNodes = allTags.filter(t => !t.isConnection).length;
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
+    //@validateERDiagramCounts1->validateERDiagramCounts2:Count connections and compare
+    //@validateERDiagramCounts2:Connection count compared
     const connectionCount = allTags.filter(t => t.isConnection).length;
     if (connectionCount !== diagramConnections) {
         issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
@@ -533,52 +512,64 @@ function validateERDiagramCounts(allTags: TagInfo[], diagramNodes: number, diagr
 }
 
 /**
- * Validates if the generated diagram has the same number of elements as the MAD tags
- * Returns array of issues (empty = all ok)
+ * ORCHESTRATOR: validates if the generated diagram has the same number of elements as the MAD tags.
+ * Pipeline: count diagram elements → parse all tags → dispatch to type-specific validator →
+ * run tagging hygiene checks (orphan, placement, invalid refs, missing connections).
  */
+//@validateDiagramCounts
 export function validateDiagramCounts(
     documentText: string,
     mermaidCode: string,
     diagramType: string
 ): string[] {
     const lines = documentText.split(/\r?\n/);
+
+    //@validateDiagramCounts1:Count node and connection totals in generated Mermaid
     const { nodes: diagramNodes, connections: diagramConnections } = countDiagramElements(mermaidCode);
     
     const issues: string[] = [];
     const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
     
+    //@validateDiagramCounts1->validateDiagramCounts2:Dispatch to per-type peer validator
+    //@validateDiagramCounts2:Type-specific peer check dispatched
     if (typeKey.startsWith('sequencediagram')) {
         const allTags = parseAllTags(documentText, lines);
+        //@validateDiagramCounts2->validateSequenceDiagramCounts:Run sequence peer check
         issues.push(...validateSequenceDiagramCounts(allTags, diagramNodes, diagramConnections));
     } else {
         const allTags = parseAllTags(documentText, lines);
         if (typeKey.startsWith('classdiagram')) {
+            //@validateDiagramCounts2->validateClassDiagramCounts:Run class peer check
             issues.push(...validateClassDiagramCounts(allTags, diagramNodes, diagramConnections));
         } else if (typeKey.startsWith('flowchart') || typeKey.startsWith('graph')) {
+            //@validateDiagramCounts2->validateFlowchartCounts:Run flowchart peer check
             issues.push(...validateFlowchartCounts(allTags, diagramNodes, diagramConnections));
         } else if (typeKey.startsWith('statediagram') || typeKey.includes('state')) {
+            //@validateDiagramCounts2->validateStateDiagramCounts:Run state peer check
             issues.push(...validateStateDiagramCounts(allTags, diagramNodes, diagramConnections));
         } else if (typeKey.startsWith('erdiagram')) {
+            //@validateDiagramCounts2->validateERDiagramCounts:Run ER peer check
             issues.push(...validateERDiagramCounts(allTags, diagramNodes, diagramConnections));
         }
     }
     
-    // Orphan and reference checks still use raw tags
+    //@validateDiagramCounts2->validateDiagramCounts3:Run tag hygiene checks
+    //@validateDiagramCounts3:Hygiene checks complete
     const allTags = parseAllTags(documentText, lines);
     issues.push(...findOrphanTags(allTags, lines, diagramType));
     issues.push(...findInvalidReferences(allTags));
     issues.push(...findTagPlacementIssues(allTags, lines, diagramType));
     issues.push(...findMissingConnections(allTags, diagramType));
     
+    //@validateDiagramCounts3->validateDiagramCounts4:Return all issues
+    //@validateDiagramCounts4:Issues returned
     return issues;
 }
 
 /**
  * Validates the Mermaid syntax using the real Mermaid parser (mermaid.parse).
- * Replaces the old regex-based type-specific validators with accurate,
- * grammar-level validation that catches invalid node IDs, malformed syntax,
- * and other errors the regex checks missed.
  */
+//@validateMermaidForType
 export function validateMermaidForType(mermaidCode: string, _diagramType: string): { valid: boolean; error?: string } {
     return validateMermaidSyntax(mermaidCode);
 }

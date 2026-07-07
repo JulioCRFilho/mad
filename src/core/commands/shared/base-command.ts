@@ -1,3 +1,5 @@
+//@::graph
+
 import * as vscode from 'vscode';
 import { readDiagramType, ProcessedNode } from '../../diagram/parser';
 import { generateMermaidDiagram } from '../../diagram/generator';
@@ -11,6 +13,7 @@ import { validateMADStructure, validateMermaidForType } from './validation';
  * Implements the common pipeline: MAD validation → tag processing → Mermaid generation → Mermaid validation → display.
  * Each diagram type only needs to implement `matches()` and can override methods for specific behavior.
  */
+//@BaseDiagramCommand
 export abstract class BaseDiagramCommand implements DiagramCommandHandler {
     abstract readonly type: string;
     abstract matches(diagramType: string): boolean;
@@ -38,7 +41,6 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
     /**
      * Finds and processes all tags related to the diagram.
-     * Uses the simple version that returns only ProcessedNode[].
      */
     protected findTags(document: vscode.TextDocument, prefix: string, diagramType: string): ProcessedNode[] {
         return findRelatedTags(document, prefix, diagramType);
@@ -53,7 +55,6 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
     /**
      * Validates the Mermaid syntax using the real Mermaid parser (mermaid.parse).
-     * Can be overridden by subclasses for custom validation.
      */
     protected validateMermaid(mermaidCode: string, diagramType: string): { valid: boolean; error?: string } {
         return validateMermaidForType(mermaidCode, diagramType);
@@ -68,15 +69,12 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
     /**
      * Hook executed before MAD validation.
-     * Can be used for diagram type-specific pre-processing.
      */
     protected beforeValidation(_document: vscode.TextDocument, _prefix: string): void {
-        // No-op by default
     }
 
     /**
      * Hook executed before diagram display.
-     * Can be used for post-processing of the Mermaid code.
      */
     protected beforeDisplay(_mermaidCode: string, _diagramType: string): string {
         return _mermaidCode;
@@ -84,43 +82,57 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
     /**
      * Executes the complete diagram pipeline.
-     * Subclasses can override this method to change the flow,
-     * but using the hooks for minor customizations is recommended.
+     * Flow: read diagram type → beforeValidation → validateMAD → findTags →
+     *   generateMermaid → beforeDisplay → validateMermaid → displayDiagram
      */
+    //@BaseDiagramCommand1:Execute pipeline — display diagram
     execute(context: DiagramCommandContext): DiagramResult {
         const { document, prefix, extensionUri } = context;
 
         // Step 1: Read diagram type
+        //@BaseDiagramCommand1.1:Diagram type read from document
         const diagramType = this.readDiagramType(document);
 
-        // Step 1.5: Pre-validation hook
+        // Step 2: Pre-validation hook
         this.beforeValidation(document, prefix);
 
-        // Step 2: Validate MAD structure
+        // Step 3: Validate MAD structure
+        //@BaseDiagramCommand1.1->BaseDiagramCommand1.2:Validate MAD structure
+        //@BaseDiagramCommand1.2:MAD structure validated
         const validation = this.validateMAD(document, prefix);
         if (!validation.valid) {
+            //@BaseDiagramCommand1.2->Ext_1:MAD validation failed
             return { success: false, errorMessage: validation.error };
         }
 
-        // Step 3: Find and process related tags
+        // Step 4: Find and process related tags
+        //@BaseDiagramCommand1.2->BaseDiagramCommand1.3:Find and process tags
+        //@BaseDiagramCommand1.3:Tags found and processed
         const relatedTags = this.findTags(document, prefix, diagramType);
 
-        // Step 4: Generate Mermaid code
+        // Step 5: Generate Mermaid code
+        //@BaseDiagramCommand1.3->BaseDiagramCommand1.4:Generate Mermaid code
+        //@BaseDiagramCommand1.4:Mermaid code generated
         let mermaidCode = this.generateMermaid(relatedTags, diagramType);
 
-        // Step 5: Pre-display hook
+        // Step 6: Pre-display hook
         mermaidCode = this.beforeDisplay(mermaidCode, diagramType);
 
-        // Step 6: Validate Mermaid syntax using real parser (mermaid.parse)
+        // Step 7: Validate Mermaid syntax
+        //@BaseDiagramCommand1.4->BaseDiagramCommand1.5:Validate Mermaid syntax
+        //@BaseDiagramCommand1.5:Mermaid syntax validated
         const mermaidValidation = this.validateMermaid(mermaidCode, diagramType);
         if (!mermaidValidation.valid) {
+            //@BaseDiagramCommand1.5->Ext_1:Mermaid validation failed
             return {
                 success: false,
                 errorMessage: `Mermaid syntax error:\n${mermaidValidation.error}`
             };
         }
 
-        // Step 7: Display diagram
+        // Step 8: Display diagram
+        //@BaseDiagramCommand1.5->BaseDiagramCommand1.6:Display diagram in panel
+        //@BaseDiagramCommand1.6:Diagram displayed to user
         this.displayDiagram(extensionUri, mermaidCode);
 
         return { success: true };
@@ -128,43 +140,55 @@ export abstract class BaseDiagramCommand implements DiagramCommandHandler {
 
     /**
      * Generates the diagram without displaying it.
-     * Returns the Mermaid code for validation by AI agent.
-     * Uses the EXACT same pipeline as execute() to avoid divergence.
+     * Uses the EXACT same pipeline as execute() but returns Mermaid code instead of displaying.
      */
+    //@BaseDiagramCommand2:Generate-only pipeline — return Mermaid code
     generateOnly(context: DiagramCommandContext): DiagramResult & { code?: string } {
         const { document, prefix } = context;
 
         // Step 1: Read diagram type
+        //@BaseDiagramCommand2.1:Diagram type read from document
         const diagramType = this.readDiagramType(document);
 
-        // Step 1.5: Pre-validation hook
+        // Step 2: Pre-validation hook
         this.beforeValidation(document, prefix);
 
-        // Step 2: Validate MAD structure
+        // Step 3: Validate MAD structure
+        //@BaseDiagramCommand2.1->BaseDiagramCommand2.2:Validate MAD structure
+        //@BaseDiagramCommand2.2:MAD structure validated
         const validation = this.validateMAD(document, prefix);
         if (!validation.valid) {
+            //@BaseDiagramCommand2.2->Ext_1:MAD validation failed
             return { success: false, errorMessage: validation.error };
         }
 
-        // Step 3: Find and process related tags
+        // Step 4: Find and process related tags
+        //@BaseDiagramCommand2.2->BaseDiagramCommand2.3:Find and process tags
+        //@BaseDiagramCommand2.3:Tags found and processed
         const relatedTags = this.findTags(document, prefix, diagramType);
 
-        // Step 4: Generate Mermaid code
+        // Step 5: Generate Mermaid code
+        //@BaseDiagramCommand2.3->BaseDiagramCommand2.4:Generate Mermaid code
+        //@BaseDiagramCommand2.4:Mermaid code generated
         let mermaidCode = this.generateMermaid(relatedTags, diagramType);
 
-        // Step 5: Pre-display hook
+        // Step 6: Pre-display hook
         mermaidCode = this.beforeDisplay(mermaidCode, diagramType);
 
-        // Step 6: Validate Mermaid syntax using real parser (mermaid.parse)
+        // Step 7: Validate Mermaid syntax
+        //@BaseDiagramCommand2.4->BaseDiagramCommand2.5:Validate Mermaid syntax
+        //@BaseDiagramCommand2.5:Mermaid syntax validated
         const mermaidValidation = this.validateMermaid(mermaidCode, diagramType);
         if (!mermaidValidation.valid) {
+            //@BaseDiagramCommand2.5->Ext_1:Mermaid validation failed
             return {
                 success: false,
                 errorMessage: `Mermaid syntax error:\n${mermaidValidation.error}`
             };
         }
 
-        // Return code WITHOUT displaying (no Step 7)
+        //@BaseDiagramCommand2.5->BaseDiagramCommand2.6:Return Mermaid code to caller
+        //@BaseDiagramCommand2.6:Mermaid code returned (no display)
         return { success: true, code: mermaidCode };
     }
 }

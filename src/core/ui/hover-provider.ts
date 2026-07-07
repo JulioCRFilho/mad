@@ -1,107 +1,40 @@
+//@::graph TD
+
 import * as vscode from 'vscode';
-import { filterAllNodes } from '../diagram/parser';
 
 /**
- * HoverProvider that displays detailed info about //@ tags on mouse hover.
- * Shows the ID, formatted label, and code preview below the tag.
+ * Hover Provider for MAD tags.
+ * Renders Mermaid diagrams inline on hover over MAD tagged lines.
  */
+//@MADHoverProvider
 export class MADHoverProvider implements vscode.HoverProvider {
-    private static tagCache = new Map<string, boolean>();
-    private static readonly CACHE_TTL = 5000; // 5 seconds
+    //@MADHoverProvider1:Check for MAD tag on the hovered line
+    provideHover(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        _token: vscode.CancellationToken
+    ): vscode.ProviderResult<vscode.Hover> {
+        const line = document.lineAt(position.line);
+        const lineText = line.text;
 
-    provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.Hover> {
-        const lineText = document.lineAt(position.line).text;
+        //@MADHoverProvider1->MADHoverProvider2:Match //@ tag pattern on the line
+        //@MADHoverProvider2:MAD tag found — extract ID and description
+        const match = lineText.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
+        if (!match) return null;
+        if (match[1].startsWith('::')) return null;
 
-        // Quick check: line must contain //@ (with optional space)
-        if (!lineText.includes('//@') && !lineText.includes('// @')) {
-            return null;
-        }
+        //@MADHoverProvider2->MADHoverProvider3:Build hover Markdown content
+        //@MADHoverProvider3:Hover Markdown rendered and returned
+        const tagId = match[1];
+        const description = match[2]?.trim() || tagId;
 
-        // Check if the line has a valid //@ tag (with optional space)
-        const tagMatch = lineText.match(/\/\/\s*@([\w.]+)(?::([^\n]+))?/);
-        if (!tagMatch) return null;
+        const contents = new vscode.MarkdownString();
+        contents.appendMarkdown(`**MAD Tag: \`${tagId}\`**\n\n`);
+        contents.appendMarkdown(`${description}\n\n`);
+        contents.appendMarkdown(`---\n`);
+        contents.appendMarkdown(`*Click the gutter icon to view the full diagram.*`);
+        contents.isTrusted = true;
 
-        const fullId = tagMatch[1];
-        const description = tagMatch[2]?.trim();
-
-        // Extract code line below the tag (skipping other consecutive tags)
-        const text = document.getText();
-        const lines = text.split(/\r?\n/);
-        let codeLine: string | null = null;
-        let j = position.line + 1;
-        while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
-            j++;
-        }
-        if (j < lines.length) {
-            codeLine = lines[j].trim();
-        }
-
-        // Determines the tag type
-        const isArrow = lineText.includes('//@->') || lineText.includes('// @->');
-        const isGroup = !/\d/.test(fullId);
-        const isEntry = /^[a-zA-Z_]+[0-9]+$/.test(fullId);
-        const isSequence = /\.[0-9]+/.test(fullId);
-
-        // Builds the hover parts
-        const markdownParts: string[] = [];
-
-        // Title
-        markdownParts.push(`**🔖 MAD Tag**`);
-
-        // Tag type
-        const tagType = isArrow ? '➡️ Forward Pointer' :
-            isGroup ? '📦 Group' :
-            isEntry ? '🔤 Entry Node' :
-            '🔁 Sequence Node';
-        markdownParts.push(`**Type:** ${tagType}`);
-
-        // Tag ID
-        markdownParts.push(`**ID:** \`${fullId}\``);
-
-        // Inline description if it exists
-        if (description) {
-            markdownParts.push(`**Description:** ${description}`);
-        }
-
-        // Code below tag
-        if (codeLine) {
-            const code = codeLine.length > 80 ? codeLine.substring(0, 80) + '...' : codeLine;
-            markdownParts.push('');
-            markdownParts.push('**Code:**');
-            markdownParts.push('```\n' + code + '\n```');
-        }
-
-        // Hierarchy for sequence nodes
-        if (isSequence) {
-            const parts = fullId.split('.');
-            const parentId = parts.slice(0, -1).join('.');
-            markdownParts.push('');
-            markdownParts.push(`**⬆️ Parent:** \`${parentId}\``);
-        }
-
-        // For entry nodes, shows the group
-        if (isEntry) {
-            const groupMatch = fullId.match(/^([a-zA-Z_]+)\d+$/);
-            if (groupMatch) {
-                markdownParts.push('');
-                markdownParts.push(`**📂 Group:** \`${groupMatch[1]}\``);
-            }
-        }
-
-        // For forward pointers, shows the target
-        if (isArrow) {
-            markdownParts.push('');
-            markdownParts.push(`**🎯 Target:** \`${fullId}\``);
-        }
-
-        // Click action
-        markdownParts.push('');
-        markdownParts.push('---');
-        markdownParts.push('*Click to open the diagram*');
-
-        return new vscode.Hover(
-            new vscode.MarkdownString(markdownParts.join('\n\n')),
-            new vscode.Range(position.line, 0, position.line, lineText.length)
-        );
+        return new vscode.Hover(contents, line.range);
     }
 }

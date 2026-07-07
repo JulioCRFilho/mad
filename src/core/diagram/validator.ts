@@ -1,3 +1,5 @@
+//@::graph TD
+
 import * as vscode from 'vscode';
 import { NodeInfo } from './parser';
 
@@ -20,6 +22,7 @@ export interface ValidationResult {
  * 3. Every entry node (Login1) has a corresponding group (Login)
  * 4. Hierarchy is consistent (e.g. Login1.1.1 → Login1.1 → Login1 → Login)
  */
+//@validateDiagram
 export function validateDiagram(
     allNodes: NodeInfo[],
     prefix: string
@@ -27,7 +30,7 @@ export function validateDiagram(
     const errors: ValidationError[] = [];
     const prefixLower = prefix.toLowerCase();
 
-    // Collects ALL declared IDs (not arrows)
+    //@validateDiagram1:Collect all non-arrow IDs as declared
     const declaredIds = new Map<string, NodeInfo>();
     for (const node of allNodes) {
         if (!node.isArrow) {
@@ -37,13 +40,12 @@ export function validateDiagram(
 
     const declaredIdSet = new Set(declaredIds.keys());
 
-    // 1. Checks if all //@-> point to existing IDs AND are valid nodes (not arrows)
+    //@validateDiagram1->validateDiagram2:Check forward refs point to valid IDs
+    //@validateDiagram2:Forward references validated
     for (const node of allNodes) {
         if (node.isArrow) {
-            // Skip direct connections (//@Source->Target) - they don't need to be declared
             if (node.id.includes('->')) continue;
             
-            // Check if the ID exists
             if (!declaredIdSet.has(node.id)) {
                 errors.push({
                     line: node.line,
@@ -51,7 +53,6 @@ export function validateDiagram(
                     missingId: node.id
                 });
             } else {
-                // Check if the pointed ID is a normal node (not an arrow/connection)
                 const targetNode = declaredIds.get(node.id);
                 if (targetNode && targetNode.isArrow) {
                     errors.push({
@@ -64,12 +65,11 @@ export function validateDiagram(
         }
     }
 
-    // 2. Validates hierarchy: for each sequence node, checks if the immediate parent exists
+    //@validateDiagram2->validateDiagram3:Validate sequence hierarchy (X.Y has parent X)
+    //@validateDiagram3:Sequence hierarchy validated
     for (const [id, nodeInfo] of declaredIds) {
-        // Only validates nodes with dots (sequence nodes)
         if (!id.includes('.')) continue;
 
-        // Find the immediate parent (ex: "Login1.1.1" → parent "Login1.1")
         const lastDot = id.lastIndexOf('.');
         const parentId = id.substring(0, lastDot);
 
@@ -82,9 +82,9 @@ export function validateDiagram(
         }
     }
 
-    // 3. Validates that every entry node has a corresponding group
+    //@validateDiagram3->validateDiagram4:Validate entry nodes belong to a group
+    //@validateDiagram4:Entry group membership validated
     for (const [id, nodeInfo] of declaredIds) {
-        // Identifies entry node: prefix + integer number (e.g. "Login1", "Signup2")
         const entryMatch = id.match(/^([a-zA-Z_]+)\d+$/);
         if (!entryMatch) continue;
 
@@ -98,6 +98,8 @@ export function validateDiagram(
         }
     }
 
+    //@validateDiagram4->validateDiagram5:Return validation result
+    //@validateDiagram5:Result returned (valid from errors length)
     return {
         valid: errors.length === 0,
         errors: errors
@@ -105,15 +107,20 @@ export function validateDiagram(
 }
 
 /**
- * Finds the parent ID of a numbered item
+ * Finds the parent ID of a numbered item.
+ * First check dot hierarchy, then group prefix match.
  */
+//@findParentId
 export function findParentId(id: string, groups: Array<{ id: string }>): string | null {
+    //@findParentId1:Check dot-separated hierarchy
     const lastDotIndex = id.lastIndexOf('.');
     if (lastDotIndex > 0) {
         const parentId = id.substring(0, lastDotIndex);
         return parentId;
     }
 
+    //@findParentId1->findParentId2:Fallback — check group prefix match
+    //@findParentId2:Parent found (or null)
     const match = id.match(/^([a-zA-Z_]+)\d+$/);
     if (match) {
         const groupId = match[1];

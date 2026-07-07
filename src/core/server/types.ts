@@ -40,4 +40,5 @@ export interface ValidateResponseError {
     details?: string[];
 }
 
+/** Union type combining success and error responses */
 export type ValidateResponse = ValidateResponseSuccess | ValidateResponseError;

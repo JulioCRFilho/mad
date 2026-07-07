@@ -1,3 +1,5 @@
+//@::graph TD
+
 import * as vscode from 'vscode';
 import { ProcessedNode, filterAllNodes, filterAllNodesFromText, splitNodes } from '../../diagram/parser';
 import { extractIdentifierBelow, formatCodeToLabel } from '../../diagram/identifier';
@@ -13,11 +15,15 @@ export function extractCodeLine(document: vscode.TextDocument, tagLine: number):
 /**
  * Extracts the source code below a tag from raw lines (no vscode.TextDocument needed).
  */
+//@extractCodeLineFromLines
 export function extractCodeLineFromLines(lines: string[], tagLine: number): string | null {
+    //@extractCodeLineFromLines1:Skip consecutive tag lines
     let j = tagLine + 1;
     while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
         j++;
     }
+    //@extractCodeLineFromLines1->extractCodeLineFromLines2:Return first non-tag code line
+    //@extractCodeLineFromLines2:Code line extracted and returned
     if (j < lines.length) {
         return lines[j].replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
     }
@@ -35,7 +41,9 @@ export function extractSQLBlock(document: vscode.TextDocument, tagLine: number):
 /**
  * Extracts a complete SQL code block from raw lines (no vscode.TextDocument needed).
  */
+//@extractSQLBlockFromLines
 export function extractSQLBlockFromLines(lines: string[], tagLine: number): string | null {
+    //@extractSQLBlockFromLines1:Skip consecutive tag lines
     let j = tagLine + 1;
     while (j < lines.length && lines[j].match(/\/\/\s*@/)) {
         j++;
@@ -43,6 +51,8 @@ export function extractSQLBlockFromLines(lines: string[], tagLine: number): stri
 
     if (j >= lines.length) return null;
 
+    //@extractSQLBlockFromLines1->extractSQLBlockFromLines2:Accumulate SQL until semicolon
+    //@extractSQLBlockFromLines2:SQL block accumulated
     const codeLines: string[] = [];
     while (j < lines.length) {
         const line = lines[j];
@@ -56,22 +66,23 @@ export function extractSQLBlockFromLines(lines: string[], tagLine: number): stri
 }
 
 /**
- * Checks if a line of code has already been used by a retro node,
- * returning the ID of the corresponding retro node, or null if not found.
+ * Two-pass matching for forward-to-retro node resolution.
+ * Pass 1: match by ClassDiagram group for inherited/composition arrows.
+ * Pass 2: match by identical code line.
+ * Pass 3: fallback to closest numbered retro node above.
  */
+//@findRetroNodeForLine
 export function findRetroNodeForLine(
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
     document: vscode.TextDocument,
     forwardLine: number,
     arrowPrefix?: string
 ): { id: string; line: number } | null {
-    // For classDiagram connections (*--, <|--, o--), associates with the parent group
-    // instead of the closest entry node
+    //@findRetroNodeForLine1:Pass 1 — ClassDiagram group match
     if (arrowPrefix && ['*--', '<|--', 'o--'].includes(arrowPrefix)) {
         let closestGroup: { id: string; line: number } | null = null;
         for (const retro of retroNodes) {
             if (retro.line < forwardLine && (!closestGroup || retro.line > closestGroup.line)) {
-                // Only groups (no numbers)
                 if (!/\d/.test(retro.id)) {
                     closestGroup = { id: retro.id, line: retro.line };
                 }
@@ -80,7 +91,7 @@ export function findRetroNodeForLine(
         return closestGroup;
     }
 
-    // Strategy 1: same exact code line
+    //@findRetroNodeForLine2:Pass 2 — match by identical code line
     const codeLine = extractCodeLine(document, forwardLine);
     if (codeLine) {
         for (const retro of retroNodes) {
@@ -91,12 +102,10 @@ export function findRetroNodeForLine(
         }
     }
 
-    // Strategy 2: find closest retro node above
-    // (for //@-> inside methods, associate with parent method)
+    //@findRetroNodeForLine3:Pass 3 — closest numbered retro above
     let closest: { id: string; line: number } | null = null;
     for (const retro of retroNodes) {
         if (retro.line < forwardLine && (!closest || retro.line > closest.line)) {
-            // Only numbered retro nodes (entries) — not sub-steps or groups
             if (/^[a-zA-Z_]+\d+$/.test(retro.id)) {
                 closest = { id: retro.id, line: retro.line };
             }
@@ -106,9 +115,9 @@ export function findRetroNodeForLine(
 }
 
 /**
- * Process ALL retro nodes (//@ID): extracts code, formats label.
- * Does NOT filter by prefix - ALL tags in the document must be rendered.
+ * Process ALL retro nodes: extracts code, formats label.
  */
+//@processRetroPointers
 export function processRetroPointers(
     document: vscode.TextDocument,
     retroPointers: Array<{ line: number; id: string; description: string | null }>,
@@ -123,10 +132,13 @@ export function processRetroPointers(
         : false;
     const result: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string }> }> = [];
 
+    //@processRetroPointers1:Iterate retro nodes
     for (const node of retroPointers) {
         const isGroup = !/\d/.test(node.id);
 
         let label: string;
+        //@processRetroPointers1->processRetroPointers2:Determine label by diagram type
+        //@processRetroPointers2:Label determined
         if (isERDiagram && isGroup) {
             const sqlBlock = extractSQLBlock(document, node.line);
             label = sqlBlock || node.id;
@@ -134,8 +146,6 @@ export function processRetroPointers(
             const codeLine = extractCodeLine(document, node.line);
             const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
             const fromCode = identifier ? formatCodeToLabel(identifier) : null;
-            // For main entries (without dot): use code identifier
-            // For sub-steps (with dot .): prefers explicit annotation description
             const isEntry = /^[a-zA-Z_]+\d+$/.test(node.id);
             const hasDots = /\.\d/.test(node.id);
             if (isGroup) {
@@ -143,8 +153,6 @@ export function processRetroPointers(
             } else if (isFlowchart && hasDots && node.description) {
                 label = node.description;
             } else if (isEntry && node.description) {
-            // For entry nodes, prioritizes the description (tag comment)
-            // over the code, so that changes in comments update the diagram
                 label = node.description;
             } else {
                 label = fromCode || node.description || node.id;
@@ -175,15 +183,9 @@ function groupConsecutiveForwardPointers(
         const existing = grouped.find(g => g.line === node.line);
         if (existing) {
             existing.ids.push(node.id);
-            if (node.description) {
-                existing.descriptions.set(node.id, node.description);
-            }
-            if (node.arrowPrefix) {
-                existing.arrowPrefixes.set(node.id, node.arrowPrefix);
-            }
-            if (node.stepNumber) {
-                existing.stepNumbers.set(node.id, node.stepNumber);
-            }
+            if (node.description) { existing.descriptions.set(node.id, node.description); }
+            if (node.arrowPrefix) { existing.arrowPrefixes.set(node.id, node.arrowPrefix); }
+            if (node.stepNumber) { existing.stepNumbers.set(node.id, node.stepNumber); }
         } else {
             grouped.push({
                 line: node.line,
@@ -199,15 +201,11 @@ function groupConsecutiveForwardPointers(
 }
 
 /**
- * Processes forward nodes (//@->ID).
- * If the code line already has an associated retro node, adds the connections to that node.
- * Otherwise, creates a synthetic node with multiple connections.
- *
- * Forward pointers with -> in the ID (e.g. //@Client->Server) are direct connections.
- *
- * Also returns an ordered list of direct connections (by file line)
- * so generators (like sequence) can respect the original order.
+ * Processes forward nodes (arrow-to-target syntax).
+ * Route 1: direct connections (source->target syntax).
+ * Route 2: match to existing retro nodes, or create synthetic nodes.
  */
+//@processForwardPointers
 export function processForwardPointers(
     document: vscode.TextDocument,
     forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }>,
@@ -224,6 +222,7 @@ export function processForwardPointers(
 
     const regularForward: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
 
+    //@processForwardPointers1:Route 1 — extract direct connections
     for (const node of forwardPointers) {
         if (node.id.includes('->')) {
             const [source, target] = node.id.split('->');
@@ -242,10 +241,11 @@ export function processForwardPointers(
         }
     }
 
+    //@processForwardPointers1->processForwardPointers2:Route 2 — match to retro or create synthetic
+    //@processForwardPointers2:Forward nodes resolved
     const grouped = groupConsecutiveForwardPointers(regularForward);
 
     for (const group of grouped) {
-        // Pega o arrowPrefix do primeiro item do grupo (todos devem ser iguais)
         const firstArrowPrefix = group.ids.length > 0 ? group.arrowPrefixes.get(group.ids[0]) : undefined;
         const existingRetro = findRetroNodeForLine(retroNodes, document, group.line, firstArrowPrefix);
 
@@ -261,6 +261,7 @@ export function processForwardPointers(
                 });
             }
         } else {
+            //@processForwardPointers2.1:Synthetic node created (no retro match)
             const codeLine = extractCodeLine(document, group.line);
             const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
             const sourceName = identifier || 'Unknown';
@@ -288,18 +289,22 @@ export function processForwardPointers(
 
 /**
  * Filters nodes by type, adds extra connections from forwards,
- * remove duplicatas e ordena.
+ * removes duplicates and sorts.
  */
+//@filterAndSortNodes
 export function filterAndSortNodes(
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
     syntheticNodes: Array<{ line: number; id: string; label: string; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> }>,
     extraConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>
 ): ProcessedNode[] {
+    //@filterAndSortNodes1:Merge retro and synthetic into node list
     const allNodes: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> }> = [
         ...retroNodes.map(n => ({ ...n, connections: [] as Array<{ id: string; label: string; arrowPrefix?: string; stepNumber?: string; line?: number }> })),
         ...syntheticNodes.map(n => ({ ...n, description: null as string | null, connections: n.connections || [] }))
     ];
 
+    //@filterAndSortNodes1->filterAndSortNodes2:Attach extra connections to source nodes
+    //@filterAndSortNodes2:Extra connections attached
     for (const conn of extraConnections) {
         const sourceNode = allNodes.find(n => n.id === conn.sourceId);
         if (sourceNode) {
@@ -313,7 +318,8 @@ export function filterAndSortNodes(
         }
     }
 
-
+    //@filterAndSortNodes2->filterAndSortNodes3:Normalize and deduplicate by ID
+    //@filterAndSortNodes3:Nodes normalized and deduped
     const normalized = allNodes.map(node => ({
         line: node.line,
         id: node.id,
@@ -329,21 +335,42 @@ export function filterAndSortNodes(
     return unique;
 }
 
-/**
- * Result of the tag processing pipeline with preserved ordering.
- * Includes the processed nodes and the ordered list of direct connections
- * (//@Source->Target) na ordem original do arquivo.
- */
 export interface RelatedTagsResult {
     nodes: ProcessedNode[];
-    /** Direct connections (//@Source->Target) in the original file order */
     orderedDirectConnections: Array<{ sourceId: string; targetId: string; label: string; line: number; arrowPrefix?: string; stepNumber?: string }>;
 }
 
 /**
- * Pipeline completo: filtra TODAS as tags → separa tipos → processa retro → processa forward → filtra, ordena e retorna.
- * Does NOT filter by prefix - ALL tags in the document are included in the diagram.
- * Returns only processed nodes (compatible with existing generators).
+ * Full pipeline: filter nodes → split retro/forward → process retro → process forward →
+ * filter, sort, merge ordered connections, and return.
+ * This is the core tag-to-node pipeline used by VSCode commands.
+ */
+//@findRelatedTagsWithOrder
+export function findRelatedTagsWithOrder(
+    document: vscode.TextDocument,
+    prefix: string,
+    diagramType: string
+): RelatedTagsResult {
+    //@findRelatedTagsWithOrder1:Filter and split all MAD nodes
+    const allNodes = filterAllNodes(document);
+    const { retroPointers, forwardPointers } = splitNodes(allNodes);
+
+    //@findRelatedTagsWithOrder1->findRelatedTagsWithOrder2:Process retro and forward pointers
+    //@findRelatedTagsWithOrder2:Retro and forward nodes processed
+    const processedRetro = processRetroPointers(document, retroPointers, prefix, diagramType);
+    const { syntheticNodes, extraConnections, orderedDirectConnections } = processForwardPointers(document, forwardPointers, processedRetro, prefix);
+
+    //@findRelatedTagsWithOrder2->findRelatedTagsWithOrder3:Filter, sort, and return result
+    //@findRelatedTagsWithOrder3:Result with ordered connections returned
+    return {
+        nodes: filterAndSortNodes(processedRetro, syntheticNodes, extraConnections),
+        orderedDirectConnections
+    };
+}
+
+/**
+ * Convenience: calls findRelatedTagsWithOrder and merges ordered connections
+ * into ProcessedNode[].connections for backward compatibility.
  */
 export function findRelatedTags(
     document: vscode.TextDocument,
@@ -352,12 +379,9 @@ export function findRelatedTags(
 ): ProcessedNode[] {
     const result = findRelatedTagsWithOrder(document, prefix, diagramType);
 
-    // Merges orderedDirectConnections (//@Source->Target:label) nos node.connections
-    // so generators like state and ER can access them via tag.connections
     for (const conn of result.orderedDirectConnections) {
         const sourceNode = result.nodes.find(n => n.id === conn.sourceId);
         if (sourceNode) {
-            // Avoids duplicates (in case a connection was already added via extraConnections)
             const alreadyPresent = sourceNode.connections.some(
                 c => c.id === conn.targetId && c.label === conn.label
             );
@@ -376,42 +400,16 @@ export function findRelatedTags(
     return result.nodes;
 }
 
-/**
- * Extended version of the pipeline that also returns ordered direct connections.
- * Used by diagrams that need the exact order of messages (e.g. sequenceDiagram).
- */
-export function findRelatedTagsWithOrder(
-    document: vscode.TextDocument,
-    prefix: string,
-    diagramType: string
-): RelatedTagsResult {
-    const allNodes = filterAllNodes(document);
-    const { retroPointers, forwardPointers } = splitNodes(allNodes);
-
-    // Process ALL retro pointers (no prefix filter)
-    const processedRetro = processRetroPointers(document, retroPointers, prefix, diagramType);
-    const { syntheticNodes, extraConnections, orderedDirectConnections } = processForwardPointers(document, forwardPointers, processedRetro, prefix);
-
-    return {
-        nodes: filterAndSortNodes(processedRetro, syntheticNodes, extraConnections),
-        orderedDirectConnections
-    };
-}
-
 // ── Text-based variants (no vscode.TextDocument required) ──
-// These are used by the HTTP server handler to validate files
-// from raw text without needing a VSCode document instance.
 
-/**
- * Text-based variant of findRetroNodeForLine — works with raw lines.
- */
+//@RetroMatcherFromText
 export function findRetroNodeForLineFromLines(
     retroNodes: Array<{ line: number; id: string; label: string; description: string | null }>,
     lines: string[],
     forwardLine: number,
     arrowPrefix?: string
 ): { id: string; line: number } | null {
-    // For classDiagram connections (*--, <|--, o--), associates with the parent group
+    //@RetroMatcherFromText1:Pass 1 — ClassDiagram group match (text)
     if (arrowPrefix && ['*--', '<|--', 'o--'].includes(arrowPrefix)) {
         let closestGroup: { id: string; line: number } | null = null;
         for (const retro of retroNodes) {
@@ -424,7 +422,7 @@ export function findRetroNodeForLineFromLines(
         return closestGroup;
     }
 
-    // Strategy 1: same exact code line
+    //@RetroMatcherFromText2:Pass 2 — match by identical code line (text)
     const codeLine = extractCodeLineFromLines(lines, forwardLine);
     if (codeLine) {
         for (const retro of retroNodes) {
@@ -435,7 +433,7 @@ export function findRetroNodeForLineFromLines(
         }
     }
 
-    // Strategy 2: find closest retro node above
+    //@RetroMatcherFromText3:Pass 3 — closest numbered retro above (text)
     let closest: { id: string; line: number } | null = null;
     for (const retro of retroNodes) {
         if (retro.line < forwardLine && (!closest || retro.line > closest.line)) {
@@ -447,9 +445,7 @@ export function findRetroNodeForLineFromLines(
     return closest;
 }
 
-/**
- * Text-based variant of processRetroPointers — works with raw lines.
- */
+//@RetroProcessorFromText
 export function processRetroPointersFromLines(
     lines: string[],
     retroPointers: Array<{ line: number; id: string; description: string | null }>,
@@ -464,10 +460,13 @@ export function processRetroPointersFromLines(
         : false;
     const result: Array<{ line: number; id: string; label: string; description: string | null; connections: Array<{ id: string; label: string }> }> = [];
 
+    //@RetroProcessorFromText1:Iterate retro nodes (text)
     for (const node of retroPointers) {
         const isGroup = !/\d/.test(node.id);
 
         let label: string;
+        //@RetroProcessorFromText1->RetroProcessorFromText2:Determine label (text)
+        //@RetroProcessorFromText2:Label determined
         if (isERDiagram && isGroup) {
             const sqlBlock = extractSQLBlockFromLines(lines, node.line);
             label = sqlBlock || node.id;
@@ -500,9 +499,7 @@ export function processRetroPointersFromLines(
     return result;
 }
 
-/**
- * Text-based variant of processForwardPointers — works with raw lines.
- */
+//@ForwardProcessorFromText
 export function processForwardPointersFromLines(
     lines: string[],
     forwardPointers: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string; stepNumber?: string }>,
@@ -519,6 +516,7 @@ export function processForwardPointersFromLines(
 
     const regularForward: Array<{ line: number; id: string; description: string | null; arrowPrefix?: string }> = [];
 
+    //@ForwardProcessorFromText1:Route 1 — direct connections (text)
     for (const node of forwardPointers) {
         if (node.id.includes('->')) {
             const [source, target] = node.id.split('->');
@@ -537,6 +535,8 @@ export function processForwardPointersFromLines(
         }
     }
 
+    //@ForwardProcessorFromText1->ForwardProcessorFromText2:Route 2 — retro or synthetic (text)
+    //@ForwardProcessorFromText2:Forward pointers resolved
     const grouped = groupConsecutiveForwardPointers(regularForward);
 
     for (const group of grouped) {
@@ -555,6 +555,7 @@ export function processForwardPointersFromLines(
                 });
             }
         } else {
+            //@ForwardProcessorFromText2.1:Synthetic node created (text)
             const codeLine = extractCodeLineFromLines(lines, group.line);
             const identifier = codeLine ? extractIdentifierBelow(codeLine) : null;
             const sourceName = identifier || 'Unknown';
@@ -582,25 +583,29 @@ export function processForwardPointersFromLines(
 
 /**
  * Pipeline from raw text — used by the HTTP server handler.
- * Does NOT require a vscode.TextDocument. Produces the same
- * ProcessedNode[] output as findRelatedTags.
+ * Mirror of findRelatedTagsWithOrder but operates on raw text instead of vscode.TextDocument.
  */
+//@findRelatedTagsFromText
 export function findRelatedTagsFromText(
     text: string,
     prefix: string,
     diagramType: string
 ): ProcessedNode[] {
+    //@findRelatedTagsFromText1:Parse text and split nodes (text)
     const lines = text.split(/\r?\n/);
     const allNodes = filterAllNodesFromText(text);
     const { retroPointers, forwardPointers } = splitNodes(allNodes);
 
+    //@findRelatedTagsFromText1->findRelatedTagsFromText2:Build and sort processed nodes
+    //@findRelatedTagsFromText2:Processed nodes built
     const processedRetro = processRetroPointersFromLines(lines, retroPointers, prefix, diagramType);
     const { syntheticNodes, extraConnections, orderedDirectConnections } =
         processForwardPointersFromLines(lines, forwardPointers, processedRetro, prefix);
 
     const nodes = filterAndSortNodes(processedRetro, syntheticNodes, extraConnections);
 
-    // Merge orderedDirectConnections into node.connections
+    //@findRelatedTagsFromText2->findRelatedTagsFromText3:Merge ordered connections
+    //@findRelatedTagsFromText3:Ordered connections merged and returned
     for (const conn of orderedDirectConnections) {
         const sourceNode = nodes.find(n => n.id === conn.sourceId);
         if (sourceNode) {

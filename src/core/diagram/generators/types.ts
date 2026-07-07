@@ -1,23 +1,25 @@
+//@::graph TD
+
 import { ProcessedNode } from '../parser';
 
 /**
- * Interface que todo generator de diagrama deve implementar
+ * Interface for diagram generators.
  */
 export interface DiagramGenerator {
-    /** Unique identifier for the diagram type */
     type: string;
-    /** Verifica se este generator atende ao diagramType informado */
     matches(diagramType: string): boolean;
-    /** Generates the Mermaid code */
     generate(tags: ProcessedNode[], diagramType: string): string;
 }
 
 /**
- * Extracts the number(s) from a node ID for sorting.
- * Ex: "Login1" → [1], "Login1.1" → [1, 1], "Login1.1.2" → [1, 1, 2]
+ * Extracts sequential numbers from an ID.
+ * Used by flowchart generator to sort nodes by numeric ID.
  */
+//@extractNumbersFromId
 export function extractNumbersFromId(id: string): number[] {
-    const match = id.match(/\d+(\.\d+)*/g);
-    if (!match) return [0];
-    return match[0].split('.').map(Number);
+    //@extractNumbersFromId1:Match all digit sequences in the ID
+    const matches = id.match(/(\d+)/g);
+    //@extractNumbersFromId1->extractNumbersFromId2:Parse matches to numbers and return
+    //@extractNumbersFromId2:Number array returned
+    return matches ? matches.map(Number) : [];
 }

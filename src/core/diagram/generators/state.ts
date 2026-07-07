@@ -1,3 +1,5 @@
+//@::graph TD
+
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator } from './types';
 
@@ -18,53 +20,51 @@ const ACCENT_MAP: Record<string, string> = {
     'Ý':'Y','Ç':'C','Ñ':'N',
 };
 
-/** Sanitises a label for Mermaid: normalises accents, replaces special chars
- *  that break the browser renderer (ampersands, parentheses, em/en dashes). */
+/** Sanitises a label for Mermaid: normalises accents, replaces special chars. */
 function sanitizeLabel(label: string): string {
     return label
-        // Normalise accented chars before stripping non-word chars
         .replace(/[áàâãäéèêëíìîïóòôõöúùûüýÿçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÝÇÑ]/g,
             (c) => ACCENT_MAP[c] || c)
-        .replace(/&/g, ' and')      // & → and
-        .replace(/[()]/g, '')       // strip ()
-        .replace(/\u2014/g, '-')    // em dash → hyphen
-        .replace(/\u2013/g, '-')    // en dash → hyphen
-        .replace(/"/g, '\'')        // " → '
+        .replace(/&/g, ' and')
+        .replace(/[()]/g, '')
+        .replace(/\u2014/g, '-')
+        .replace(/\u2013/g, '-')
+        .replace(/"/g, '\'')
         .replace(/\n/g, ' ')
-        .replace(/\s{2,}/g, ' ');   // collapse double spaces
+        .replace(/\s{2,}/g, ' ');
 }
 
+//@stateGenerator
 export const stateGenerator: DiagramGenerator = {
     type: 'stateDiagram',
+
     matches(diagramType: string): boolean {
         const key = diagramType.toLowerCase();
         return key.startsWith('statediagram') || key.includes('state');
     },
+
+    //@stateGenerator1
     generate(tags: ProcessedNode[], diagramType: string): string {
         let mermaid = `${diagramType}\n`;
         const states = new Map<string, string[]>();
         const transitions: string[] = [];
         const addedEdges = new Set<string>();
 
+        //@stateGenerator1->stateGenerator2:Collect states and actions from tags
+        //@stateGenerator2:States and actions collected
         for (const tag of tags) {
-            // Ignore direct connections (//@Source->Target) - they will be processed later
             if (tag.id.includes('->')) continue;
 
-            // Main states (without numbers)
             if (!/\d/.test(tag.id)) {
                 if (!states.has(tag.id)) states.set(tag.id, []);
                 continue;
             }
 
-            // Actions of a state (LoggedOut1, LoggedOut1.1, etc)
             const groupMatch = tag.id.match(/^([a-zA-Z_]+)\d+/);
             if (groupMatch) {
                 const groupId = groupMatch[1];
                 if (states.has(groupId)) {
-                    // Format the action label, sanitising special characters
                     const safeLabel = sanitizeLabel(tag.label);
-                    // Mermaid identifiers must be alphanumeric + underscore only.
-                    // Strip hyphens, spaces, and any other non-word characters.
                     const actionId = safeLabel.replace(/[^a-zA-Z0-9_]/g, '');
                     const displayLabel = tag.description ? sanitizeLabel(tag.description) : safeLabel;
                     states.get(groupId)!.push(`${actionId}: ${displayLabel}`);
@@ -72,8 +72,8 @@ export const stateGenerator: DiagramGenerator = {
             }
         }
 
-        // Process tag.connections (coming from the diagram-command pipeline)
-        // Includes both normal tag connections and direct connections (//@Source->Target)
+        //@stateGenerator2->stateGenerator3:Process transitions from group connections
+        //@stateGenerator3:Transitions processed
         for (const tag of tags) {
             if (!/\d/.test(tag.id) && tag.connections && tag.connections.length > 0) {
                 for (const conn of tag.connections) {
@@ -86,11 +86,11 @@ export const stateGenerator: DiagramGenerator = {
             }
         }
 
-        // Generate states (no quotes!)
+        //@stateGenerator3->stateGenerator4:Render state definitions (with or without actions)
+        //@stateGenerator4:State definitions rendered
         for (const stateId of states.keys()) {
             const actions = states.get(stateId) || [];
             if (actions.length === 0) {
-                // Empty state — render as simple state to avoid tGe[a.shape] bug
                 mermaid += `    state ${stateId}\n`;
             } else {
                 mermaid += `    state ${stateId} {\n`;
@@ -101,7 +101,8 @@ export const stateGenerator: DiagramGenerator = {
             }
         }
 
-        // Add transitions
+        //@stateGenerator4->stateGenerator5:Render transitions to Mermaid
+        //@stateGenerator5:Transitions rendered — Mermaid ready
         for (const trans of transitions) mermaid += trans + '\n';
 
         return mermaid;

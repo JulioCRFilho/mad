@@ -1,6 +1,5 @@
-// DOMPurify shim for Node.js (VS Code extension context).
-// Mermaid's parser internally calls DOMPurify.addHook during initialization.
-// We provide no-op stubs since we only validate syntax, not sanitize HTML.
+//@::graph
+
 (globalThis as any).DOMPurify = {
     addHook: () => {},
     sanitize: (dirty: string) => dirty,
@@ -16,18 +15,22 @@ import mermaid from 'mermaid';
 
 /**
  * Validates Mermaid diagram syntax using the real Mermaid parser (mermaid.parse).
- *
- * Returns the first error encountered. mermaid.parse() is synchronous; the
- * async DOMPurify callback triggered after parse() is harmless and silently
- * caught by VS Code's extension host.
  */
+//@validateMermaidSyntax
 export function validateMermaidSyntax(diagramCode: string): { valid: boolean; error?: string } {
+    //@validateMermaidSyntax1:Call mermaid.parse
     try {
         (mermaid as any).parse(diagramCode);
+        //@validateMermaidSyntax1->validateMermaidSyntax2:Parse success — return valid
+        //@validateMermaidSyntax2:Diagram valid
         return { valid: true };
+    //@validateMermaidSyntax1->validateMermaidSyntax3:Parse threw — catch error
+    //@validateMermaidSyntax3:Parse error caught
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         const firstLine = message.split('\n')[0].trim();
+        //@validateMermaidSyntax3->validateMermaidSyntax4:Extract first error line
+        //@validateMermaidSyntax4:Error line extracted and returned
         return {
             valid: false,
             error: firstLine || 'Unknown Mermaid parse error'

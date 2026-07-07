@@ -1,3 +1,5 @@
+//@::graph TD
+
 import { ProcessedNode } from '../parser';
 import { DiagramGenerator, extractNumbersFromId } from './types';
 
@@ -5,21 +7,25 @@ import { DiagramGenerator, extractNumbersFromId } from './types';
  *  the browser renderer (ampersands, parentheses, em/en dashes). */
 function sanitizeLabel(label: string): string {
     return label
-        .replace(/&/g, ' and')      // & → and (avoids HTML entity issues)
-        .replace(/[()]/g, '')       // strip () — breaks Mermaid edge labels
-        .replace(/\u2014/g, '-')    // em dash → hyphen
-        .replace(/\u2013/g, '-')    // en dash → hyphen
-        .replace(/"/g, '\'')        // " → '
+        .replace(/&/g, ' and')
+        .replace(/[()]/g, '')
+        .replace(/\u2014/g, '-')
+        .replace(/\u2013/g, '-')
+        .replace(/"/g, '\'')
         .replace(/\n/g, ' ')
-        .replace(/\s{2,}/g, ' ');   // collapse double+ spaces from replacements
+        .replace(/\s{2,}/g, ' ');
 }
 
+//@flowchartGenerator
 export const flowchartGenerator: DiagramGenerator = {
     type: 'flowchart',
+
     matches(diagramType: string): boolean {
         const key = diagramType.toLowerCase();
         return key.startsWith('flowchart') || key.startsWith('graph');
     },
+
+    //@flowchartGenerator1
     generate(tags: ProcessedNode[], diagramType: string): string {
         const groups = tags.filter(t => !/\d/.test(t.id));
         const numbered = tags.filter(t => /\d/.test(t.id));
@@ -29,6 +35,8 @@ export const flowchartGenerator: DiagramGenerator = {
         const sequenceNodes = numbered.filter(t => /\.[0-9]/.test(t.id));
         const syntheticNodes = numbered.filter(t => /^[a-zA-Z]+_[0-9]+$/.test(t.id));
 
+        //@flowchartGenerator1->flowchartGenerator2:Sort entry and sequence nodes by numeric ID
+        //@flowchartGenerator2:Nodes classified and sorted
         const sortedEntryNodes = [...entryNodes].sort((a, b) => {
             const numsA = extractNumbersFromId(a.id);
             const numsB = extractNumbersFromId(b.id);
@@ -53,6 +61,8 @@ export const flowchartGenerator: DiagramGenerator = {
         const idToNodeId = new Map<string, string>();
         let nodeIndex = 0;
 
+        //@flowchartGenerator2->flowchartGenerator3:Render subgraphs with entry and sequence nodes
+        //@flowchartGenerator3:Subgraphs and synthetic nodes rendered
         for (const group of sortedGroups) {
             const safeLabel = group.id.replace(/"/g, '"');
             mermaid += `    subgraph ${safeLabel}\n`;
@@ -63,9 +73,8 @@ export const flowchartGenerator: DiagramGenerator = {
 
             for (const entry of groupEntryNodes) {
                 const nodeId = entry.id.replace(/\./g, '_');
-                const safeLabel = sanitizeLabel(entry.label);
                 idToNodeId.set(entry.id, nodeId);
-                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+                mermaid += `        ${nodeId}["${sanitizeLabel(entry.label)}"]\n`;
             }
 
             const groupSequenceNodes = sortedSequenceNodes.filter(seq =>
@@ -74,9 +83,8 @@ export const flowchartGenerator: DiagramGenerator = {
 
             for (const seq of groupSequenceNodes) {
                 const nodeId = seq.id.replace(/\./g, '_');
-                const safeLabel = sanitizeLabel(seq.label);
                 idToNodeId.set(seq.id, nodeId);
-                mermaid += `        ${nodeId}["${safeLabel}"]\n`;
+                mermaid += `        ${nodeId}["${sanitizeLabel(seq.label)}"]\n`;
             }
 
             const firstNode = groupEntryNodes[0] || groupSequenceNodes[0];
@@ -89,20 +97,19 @@ export const flowchartGenerator: DiagramGenerator = {
 
         for (const item of syntheticNodes) {
             const nodeId = `N${nodeIndex++}`;
-            const safeLabel = sanitizeLabel(item.label);
             idToNodeId.set(item.id, nodeId);
-            mermaid += `    ${nodeId}["${safeLabel}"]\n`;
+            mermaid += `    ${nodeId}["${sanitizeLabel(item.label)}"]\n`;
         }
 
+        //@flowchartGenerator3->flowchartGenerator4:Add sequence parent-child edges with dedup
+        //@flowchartGenerator4:Sequence edges added
         const edges = new Set<string>();
         const addEdge = (from: string, to: string, label?: string) => {
-            const dedupLabel = label || '';
-            const key = dedupLabel ? `${from}->${to}:${dedupLabel}` : `${from}->${to}`;
+            const key = label ? `${from}->${to}:${label}` : `${from}->${to}`;
             if (edges.has(key)) return;
             edges.add(key);
             if (label && label.trim()) {
-                const safeLabel = sanitizeLabel(label);
-                mermaid += `    ${from} -->|${safeLabel}| ${to}\n`;
+                mermaid += `    ${from} -->|${sanitizeLabel(label)}| ${to}\n`;
             } else {
                 mermaid += `    ${from} --> ${to}\n`;
             }
@@ -116,12 +123,13 @@ export const flowchartGenerator: DiagramGenerator = {
                 const parentId = seq.id.substring(0, lastDot);
                 const parentNode = idToNodeId.get(parentId);
                 if (parentNode && parentNode !== src) {
-                    const label = seq.description || undefined;
-                    addEdge(parentNode, src, label);
+                    addEdge(parentNode, src, seq.description || undefined);
                 }
             }
         }
 
+        //@flowchartGenerator4->flowchartGenerator5:Add explicit connection edges
+        //@flowchartGenerator5:Explicit edges added — Mermaid ready
         for (const item of [...sortedEntryNodes, ...sortedSequenceNodes, ...syntheticNodes]) {
             const src = idToNodeId.get(item.id);
             if (!src) continue;

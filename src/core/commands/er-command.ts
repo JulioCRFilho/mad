@@ -1,3 +1,6 @@
+//@::classDiagram
+
+//@BaseDiagramCommand
 import { BaseDiagramCommand } from './shared/base-command';
 
 /**
@@ -11,9 +14,13 @@ import { BaseDiagramCommand } from './shared/base-command';
  * The ER-specific processing (SQL extraction) is performed
  * in the `processRetroPointers` helper with isERDiagram=true
  */
+//@ERCommand
 export class ERCommand extends BaseDiagramCommand {
+    //@ERCommand<|--BaseDiagramCommand:inherits
+    //@ERCommand1:type property
     readonly type = 'er';
 
+    //@ERCommand1.1:matches method
     matches(diagramType: string): boolean {
         return diagramType.toLowerCase().startsWith('erdiagram');
     }

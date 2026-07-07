@@ -1,3 +1,5 @@
+//@::classDiagram
+
 /**
  * ENTRY POINT for diagram commands.
  *
@@ -19,21 +21,33 @@
  * 4. Done! The dispatcher will route automatically
  */
 
+//@DiagramCommandHandler
 import { DiagramCommandHandler, DiagramCommandContext, DiagramResult } from './shared/types';
+//@FlowchartCommand
 import { FlowchartCommand } from './flowchart-command';
+//@SequenceCommand
 import { SequenceCommand } from './sequence-command';
+//@ClassCommand
 import { ClassCommand } from './class-command';
+//@StateCommand
 import { StateCommand } from './state-command';
+//@ERCommand
 import { ERCommand } from './er-command';
 
 export type { DiagramCommandContext, DiagramResult, DiagramCommandHandler };
 
 /** List of all registered command handlers */
+//@HandlersRegistry
 const handlers: DiagramCommandHandler[] = [
+    //@HandlersRegistry1:Instantiate FlowchartCommand
     new FlowchartCommand(),
+    //@HandlersRegistry1.1:Instantiate SequenceCommand
     new SequenceCommand(),
+    //@HandlersRegistry1.2:Instantiate ClassCommand
     new ClassCommand(),
+    //@HandlersRegistry1.3:Instantiate StateCommand
     new StateCommand(),
+    //@HandlersRegistry1.4:Instantiate ERCommand
     new ERCommand(),
 ];
 
@@ -41,18 +55,23 @@ const handlers: DiagramCommandHandler[] = [
  * Registers a new handler dynamically.
  * Useful for plugins or extensions.
  */
+//@registerCommandHandler
 export function registerCommandHandler(handler: DiagramCommandHandler): void {
+    //@registerCommandHandler1:Push handler to array
     handlers.push(handler);
 }
 
 /**
  * Gets the appropriate handler for the given diagram type.
  */
+//@getHandler
 export function getHandler(diagramType: string): DiagramCommandHandler {
+    //@getHandler1:Iterate handlers
     for (const handler of handlers) {
+        //@->FlowchartCommand:Return first match
         if (handler.matches(diagramType)) return handler;
     }
-    // Fallback to flowchart
+    //@->FlowchartCommand:Fallback to flowchart
     return handlers[0];
 }
 
@@ -63,10 +82,11 @@ export function getHandler(diagramType: string): DiagramCommandHandler {
  * It reads the diagram type from the first line of the file and delegates
  * to the specific handler.
  */
+//@validateAndDisplayDiagram
 export function validateAndDisplayDiagram(context: DiagramCommandContext): DiagramResult {
     const { document } = context;
 
-    // Read the diagram type from the document (search all lines)
+    //@validateAndDisplayDiagram1:Parse diagram type from document
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     let tagMatch: RegExpMatchArray | null = null;
@@ -81,7 +101,7 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
     
     const diagramType = tagMatch ? tagMatch[1].trim() : 'flowchart TD';
 
-    // Get the appropriate handler and execute
+    //@validateAndDisplayDiagram1.1:Delegate to handler
     const handler = getHandler(diagramType);
     return handler.execute(context);
 }
@@ -91,10 +111,11 @@ export function validateAndDisplayDiagram(context: DiagramCommandContext): Diagr
  * Returns the Mermaid code for AI agent validation.
  * Uses the same pipeline as validateAndDisplayDiagram to avoid divergence.
  */
+//@generateDiagram
 export function generateDiagram(context: DiagramCommandContext): DiagramResult & { code?: string } {
     const { document } = context;
 
-    // Read the diagram type from the document (search all lines)
+    //@generateDiagram1:Parse diagram type from document
     const text = document.getText();
     const lines = text.split(/\r?\n/);
     let tagMatch: RegExpMatchArray | null = null;
@@ -109,7 +130,7 @@ export function generateDiagram(context: DiagramCommandContext): DiagramResult &
     
     const diagramType = tagMatch ? tagMatch[1].trim() : 'flowchart TD';
 
-    // Get the appropriate handler and generate only (no display)
+    //@generateDiagram1.1:Delegate to handler generateOnly
     const handler = getHandler(diagramType);
     return handler.generateOnly(context);
 }
