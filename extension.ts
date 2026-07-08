@@ -13,8 +13,6 @@ import { startServer, stopServer, getServerPort, isServerRunning } from './src/c
 
 //@::graph
 
-const OUTPUT_FILE = vscode.Uri.file('/tmp/mad-diagram.mermaid');
-
 function isMarkdownDocument(document: vscode.TextDocument): boolean {
     return document.languageId === 'markdown';
 }

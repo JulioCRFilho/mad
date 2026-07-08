@@ -444,14 +444,19 @@ export class MADDiagramPanel {
             container.classList.remove('dragging');
         });
 
-        // Pinch zoom (trackpad gesture)
+        // Two-finger scroll pans the diagram; pinch (ctrl/meta) zooms
         container.addEventListener('wheel', (e) => {
+            e.preventDefault();
             if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
+                // Pinch-to-zoom
                 const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
                 currentZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + delta));
-                updateTransform();
+            } else {
+                // Two-finger scroll — pan horizontally and vertically
+                translateX -= e.deltaX;
+                translateY -= e.deltaY;
             }
+            updateTransform();
         }, { passive: false });
 
         // Responsive resize: when the panel size changes (sidebar toggle, split resize),
