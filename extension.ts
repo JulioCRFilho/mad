@@ -11,7 +11,7 @@ import { SUPPORTED_LANGUAGES } from './src/core/languages';
 import { createSaveHandler, saveToOutputFile } from './src/core/save-handler';
 import { startServer, stopServer, getServerPort, isServerRunning } from './src/core/server';
 
-//@::graph TD
+//@::graph
 
 const OUTPUT_FILE = vscode.Uri.file('/tmp/mad-diagram.mermaid');
 
@@ -21,23 +21,18 @@ function isMarkdownDocument(document: vscode.TextDocument): boolean {
 
 //@Setup
 export async function activate(context: vscode.ExtensionContext) {
-    //@Setup1:Clear stale diagram file
-    //@Setup1->Setup2:File cleared → show toast
     const outputFile = vscode.Uri.file('/tmp/mad-diagram.mermaid');
     try {
+        //@Setup1:Clear stale diagram file
         await vscode.workspace.fs.delete(outputFile);
     } catch (error) {
-        //@Setup1->Setup1:File missing → ignore
+        //@Setup1:File missing → ignore
     }
-
-    //@Setup2:Show activation toast
-    //@Setup2->Setup3:Toast shown → configure formatter
-    vscode.window.showInformationMessage('🚀 MAD activated! Check the Output Channel "MAD - Mermaid Auto-Doccing"', 'OK');
 
     const iconPath = vscode.Uri.joinPath(context.extensionUri, 'assets', 'icon.png').fsPath;
 
-    //@Setup3:Auto-configure formatter
-    //@Setup3->Setup4:Formatter configured → setup decoration
+    //@->Setup3:File cleared → configure formatter
+    //@Setup3:Auto-configure formatOnSave warning for files with MAD tags
     const configureFormatterForFile = (document: vscode.TextDocument) => {
         if (isMarkdownDocument(document)) return;
 
@@ -49,7 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const formatOnSave = config.get<boolean>('formatOnSave', false);
         const showWarning = vscode.workspace.getConfiguration('mad').get<boolean>('showFormatWarning', true);
 
-        //@Setup3.1:Show warning → formatOnSave is on
+        //@Setup3.1:Show warning if formatOnSave is enabled
         if (showWarning && formatOnSave) {
             vscode.window.showWarningMessage(
                 '⚠️ The auto-formatter is enabled (formatOnSave) and may break MAD tags. ' +
@@ -57,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 'Configure Now'
             ).then(selection => {
                 if (selection === 'Configure Now') {
-                    //@Setup3->Setup3:User chose Configure → open command
+                    //@Setup3:User chose Configure — open configureFormatter command
                     vscode.commands.executeCommand('mad.configureFormatter');
                 }
             });
@@ -74,8 +69,8 @@ export async function activate(context: vscode.ExtensionContext) {
         configureFormatterForFile(vscode.window.activeTextEditor.document);
     }
 
-    //@Setup4:Setup decoration manager
-    //@Setup4->Setup5:Decoration ready → register commands
+    //@->Setup4:Formatter configured → setup decoration manager
+    //@Setup4:Create and register decoration manager for MAD tag highlights
     const decorationManager = new MADDecorationManager(iconPath);
     context.subscriptions.push(decorationManager);
 
@@ -84,8 +79,8 @@ export async function activate(context: vscode.ExtensionContext) {
         decorationManager.apply(editor, decorations);
     };
 
-    //@Setup5:Register configureFormatter command
-    //@Setup5->Setup6:Command registered → register showDiagram
+    //@->Setup5:Decoration ready → register configureFormatter command
+    //@Setup5:Register configureFormatter command — disables formatOnSave workspace-wide
     const configureFormatterCommand = vscode.commands.registerCommand(
         'mad.configureFormatter',
         async () => {
@@ -97,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            //@Setup5->Setup5:formatOnSave enabled → confirm
+            //@Setup5:Prompt user to confirm disabling formatOnSave
             const choice = await vscode.window.showWarningMessage(
                 'This will disable formatOnSave in your workspace to prevent the auto-formatter from breaking MAD tags. Continue?',
                 'Yes, disable',
@@ -112,8 +107,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(configureFormatterCommand);
 
-    //@Setup6:Register showDiagram command
-    //@Setup6->Setup7:Command registered → register generateDiagram
+    //@->Setup6:Command registered → register showDiagram command
+    //@Setup6:Register showDiagram command — validates and displays diagram for a tag
     const showDiagramCommand = vscode.commands.registerCommand(
         'mad.showDiagram',
         (lineNumber: number) => {
@@ -123,7 +118,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const document = editor.document;
             const lineText = document.lineAt(lineNumber).text;
             const tagMatch = lineText.match(/\/\/\s*@([\w.]+)/);
-            //@Setup6->Setup6:No tag found → return
+            //@Setup6:No tag found on the line — return early
             if (!tagMatch) return;
 
             const fullId = tagMatch[1];
@@ -135,10 +130,10 @@ export async function activate(context: vscode.ExtensionContext) {
                 extensionUri: context.extensionUri
             };
 
-            //@Setup6->Setup6:Tag found → validate and display
+            //@Setup6:Parse and validate the diagram then show result
             const result = validateAndDisplayDiagram(diagramContext);
 
-            //@Setup6->Setup6:Validation failed → show error
+            //@Setup6:Validation failed — show error to user
             if (!result.success && result.errorMessage) {
                 vscode.window.showErrorMessage(result.errorMessage);
             }
@@ -146,14 +141,14 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showDiagramCommand);
 
-    //@Setup7:Register generateDiagram command
-    //@Setup7->Setup8:Command registered → register auto-save
+    //@->Setup7:Command registered → register generateDiagram command
+    //@Setup7:Register generateDiagram command — generates full diagram from file and writes to /tmp
     const generateDiagramCommand = vscode.commands.registerCommand(
         'mad.generateDiagram',
         async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
-                //@Setup7->Setup7:No active editor → return
+                //@Setup7:No active editor — warn and return
                 vscode.window.showWarningMessage('No active editor.');
                 return;
             }
@@ -162,7 +157,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const firstLine = document.lineAt(0).text;
             const tagMatch = firstLine.match(/\/\/\s*@::(.+)/);
             if (!tagMatch) {
-                //@Setup7->Setup7:No diagram tag → return
+                //@Setup7:No diagram type tag (//@::) on line 1 — warn and return
                 vscode.window.showWarningMessage('File does not contain MAD diagram tag.');
                 return;
             }
@@ -179,14 +174,14 @@ export async function activate(context: vscode.ExtensionContext) {
             const result = generateDiagram(diagramContext);
 
             if (!result.success) {
-                //@Setup7->Setup7:Generation failed → save error
+                //@Setup7:Generation failed — show error and write error to output file
                 const errorMsg = result.errorMessage || 'Error generating diagram.';
                 vscode.window.showErrorMessage(errorMsg);
                 await saveToOutputFile(`ERROR: ${errorMsg}`);
                 return;
             }
 
-            //@Setup7->Setup7:Generation ok → write to /tmp
+            //@Setup7:Diagram generated — write mermaid code to /tmp/mad-diagram.mermaid
             await saveToOutputFile(result.code || '', document, fullId);
             await context.globalState.update('mad.lastDiagramCode', result.code);
             await context.globalState.update('mad.lastDiagramType', fullId);
@@ -194,12 +189,12 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(generateDiagramCommand);
 
-    //@Setup8:Register auto-generate on save
-    //@Setup8->Setup9:Auto-save handler ready → register goToLine
+    //@->Setup8:Command registered → register auto-save handler
+    //@Setup8:Register the save handler that auto-generates diagram on file save
     context.subscriptions.push(createSaveHandler(context));
 
-    //@Setup9:Register goToLine command
-    //@Setup9->Setup10:Command registered → register showAtCursor
+    //@->Setup9:Auto-save ready → register goToLine command
+    //@Setup9:Register goToLine command — jumps cursor to a specific line number
     const goToLineCommand = vscode.commands.registerCommand(
         'mad.goToLine',
         (lineNumber: number) => {
@@ -214,8 +209,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(goToLineCommand);
 
-    //@Setup10:Register showDiagramAtCursor command
-    //@Setup10->Setup11:Command registered → register showLogs
+    //@->Setup10:Command registered → register showDiagramAtCursor command
+    //@Setup10:Register showDiagramAtCursor command — shows diagram for tag under cursor
     const showDiagramAtCursorCommand = vscode.commands.registerCommand(
         'mad.showDiagramAtCursor',
         () => {
@@ -228,8 +223,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showDiagramAtCursorCommand);
 
-    //@Setup11:Register showLogs command
-    //@Setup11->Setup12:Command registered → register showStats
+    //@->Setup11:Command registered → register showLogs command
+    //@Setup11:Register showLogs command — opens the MAD output channel
     const showLogsCommand = vscode.commands.registerCommand(
         'mad.showLogs',
         () => {
@@ -239,8 +234,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showLogsCommand);
 
-    //@Setup12:Register showStats command
-    //@Setup12->Setup13:Command registered → register hover provider
+    //@->Setup12:Command registered → register showStats command
+    //@Setup12:Register showStats command — displays MAD tag statistics for current file
     const showStatsCommand = vscode.commands.registerCommand(
         'mad.showStats',
         () => {
@@ -250,7 +245,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const allNodes = filterAllNodes(editor.document);
             const diagramType = readDiagramType(editor.document);
 
-            //@Setup12->Setup12:Data collected → categorize nodes
+            //@Setup12:Categorize parsed nodes into groups, entries, sequences, and forward pointers
             const declared = allNodes.filter((n: { isArrow: boolean }) => !n.isArrow);
             const forward = allNodes.filter((n: { isArrow: boolean }) => n.isArrow);
             const groups = declared.filter((n: { id: string }) => !/\d/.test(n.id));
@@ -275,16 +270,16 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(showStatsCommand);
 
-    //@Setup13:Register hover provider
-    //@Setup13->Setup14:Provider registered → register folding
+    //@->Setup13:Command registered → register hover provider
+    //@Setup13:Register hover provider for MAD tags across all supported languages
     const hoverProvider = vscode.languages.registerHoverProvider(
         SUPPORTED_LANGUAGES,
         new MADHoverProvider()
     );
     context.subscriptions.push(hoverProvider);
 
-    //@Setup14:Register folding provider
-    //@Setup14->Setup15:Provider registered → register fold command
+    //@->Setup14:Provider registered → register folding provider
+    //@Setup14:Register folding range provider for MAD tag regions
     context.subscriptions.push(
         vscode.languages.registerFoldingRangeProvider(
             SUPPORTED_LANGUAGES,
@@ -292,8 +287,8 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    //@Setup15:Register foldAllTags command
-    //@Setup15->Setup16:Command registered → register unfold command
+    //@->Setup15:Provider registered → register foldAllTags command
+    //@Setup15:Register foldAllTags command — collapses all MAD tag regions
     const foldAllTagsCommand = vscode.commands.registerCommand(
         'mad.foldAllTags',
         () => {
@@ -304,8 +299,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(foldAllTagsCommand);
 
-    //@Setup16:Register unfoldAllTags command
-    //@Setup16->Setup17:Command registered → setup auto-fold
+    //@->Setup16:Command registered → register unfoldAllTags command
+    //@Setup16:Register unfoldAllTags command — expands all MAD tags and sets 5min cooldown
     const unfoldAllTagsCommand = vscode.commands.registerCommand(
         'mad.unfoldAllTags',
         () => {
@@ -318,8 +313,8 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(unfoldAllTagsCommand);
 
-    //@Setup17:Setup auto-fold on open
-    //@Setup17->Setup18:Auto-fold ready → setup cleanup
+    //@->Setup17:Command registered → setup auto-fold on open
+    //@Setup17:Auto-fold MAD tags when a file is opened (respects 5min cooldown)
     const unfoldCooldowns = new Map<string, number>();
 
     context.subscriptions.push(
@@ -330,7 +325,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const fileKey = document.uri.toString();
             const cooldownUntil = unfoldCooldowns.get(fileKey);
-            //@Setup17->Setup17:Cooldown active → skip
+            //@Setup17:Cooldown still active — skip auto-folding
             if (cooldownUntil && Date.now() < cooldownUntil) return;
 
             setTimeout(() => {
@@ -338,7 +333,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (editor && editor.document === document) {
                     const cooldown = unfoldCooldowns.get(fileKey);
                     if (!cooldown || Date.now() >= cooldown) {
-                        //@Setup17->Setup17:Cooldown expired → fold regions
+                        //@Setup17:Cooldown expired — fold all marker regions
                         vscode.commands.executeCommand('editor.foldAllMarkerRegions');
                     }
                 }
@@ -346,8 +341,8 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    //@Setup18:Cleanup stale cooldowns
-    //@Setup18->Setup19:Cleanup running → register symbol provider
+    //@->Setup18:Auto-fold ready → setup cooldown cleanup
+    //@Setup18:Periodically clean up stale cooldown entries older than 10 minutes
     const cleanupInterval = setInterval(() => {
         const now = Date.now();
         for (const [key, cooldown] of unfoldCooldowns.entries()) {
@@ -358,8 +353,8 @@ export async function activate(context: vscode.ExtensionContext) {
     }, 60 * 1000);
     context.subscriptions.push({ dispose: () => clearInterval(cleanupInterval) });
 
-    //@Setup19:Register document symbol provider
-    //@Setup19->Setup20:Provider registered → setup click detection
+    //@->Setup19:Cleanup running → register document symbol provider
+    //@Setup19:Register document symbol provider for MAD tags in Outline view
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider(
             SUPPORTED_LANGUAGES,
@@ -367,8 +362,8 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    //@Setup20:Setup click detection
-    //@Setup20->Setup21:Click detection ready → setup change listeners
+    //@->Setup20:Provider registered → setup click detection
+    //@Setup20:Detect clicks on MAD tags to open diagram panel with throttling
     let lastClickLine = -1;
     let lastClickTime = 0;
     const CLICK_THROTTLE_MS = 300;
@@ -377,7 +372,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const editor = event.textEditor;
         if (!editor) return;
         if (isMarkdownDocument(editor.document)) return;
-        //@Setup20->Setup20:Panel already open → skip
+        //@Setup20:Diagram panel already open — skip click handling
         if (MADDiagramPanel.currentPanel) return;
 
         const selection = editor.selection;
@@ -385,7 +380,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const currentLine = selection.active.line;
         const now = Date.now();
-        //@Setup20->Setup20:Within throttle window → skip
+        //@Setup20:Click within throttle window on same line — skip
         if (currentLine === lastClickLine && now - lastClickTime < CLICK_THROTTLE_MS) return;
 
         const lineText = editor.document.lineAt(currentLine).text;
@@ -396,20 +391,20 @@ export async function activate(context: vscode.ExtensionContext) {
         const tagStart = lineText.indexOf(tagText);
         const tagEnd = tagStart + tagText.length;
         const cursorPos = selection.active.character;
-        //@Setup20->Setup20:Cursor outside tag → return
+        //@Setup20:Cursor outside the MAD tag text — ignore
         if (cursorPos < tagStart || cursorPos > tagEnd) return;
 
         lastClickLine = currentLine;
         lastClickTime = now;
 
-        //@Setup20->Setup20:Click on tag → open diagram
+        //@Setup20:Valid click on tag — update decorations and show diagram
         updateDecorations(editor);
         vscode.commands.executeCommand('mad.showDiagram', currentLine);
     });
     context.subscriptions.push(clickDetection);
 
-    //@Setup21:Setup change listeners
-    //@Setup21->Setup22:Listeners ready → update decorations
+    //@->Setup21:Click detection ready → setup change listeners
+    //@Setup21:Register change listeners to update decorations on editor/document changes
     let lastDecorationUpdate = 0;
     const DECORATION_THROTTLE_MS = 100;
 
@@ -425,27 +420,29 @@ export async function activate(context: vscode.ExtensionContext) {
         if (isMarkdownDocument(editor.document)) return;
         if (event.document !== editor.document) return;
 
-        //@Setup21->Setup21:Within throttle → skip
+        //@Setup21:Within decoration throttle window — skip update
         const now = Date.now();
         if (now - lastDecorationUpdate < DECORATION_THROTTLE_MS) return;
         lastDecorationUpdate = now;
         updateDecorations(editor);
     }));
 
-    //@Setup22:Update initial decorations
+    //@->Setup22:Listeners ready → apply initial decorations
+    //@Setup22:Apply initial decorations if an editor is already active
     if (vscode.window.activeTextEditor) {
         updateDecorations(vscode.window.activeTextEditor);
     }
 
-    //@Setup23:Start HTTP server for CLI agents
-    //@Setup23->Setup24:Server started → register status command
+    //@->Setup23:Decorations applied → start HTTP server
+    //@Setup23:Start the HTTP server for CLI agent validation on localhost
     startServer(context).then(port => {
         if (port !== null) {
             log.info(`MAD HTTP server started on port ${port}`);
         }
     });
 
-    //@Setup24:Register showServerStatus command
+    //@->Setup24:Server started → register showServerStatus command
+    //@Setup24:Register showServerStatus command — displays server URL or troubleshooting info
     const showServerStatusCommand = vscode.commands.registerCommand(
         'mad.showServerStatus',
         () => {
