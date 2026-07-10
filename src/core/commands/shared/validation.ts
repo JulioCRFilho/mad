@@ -485,9 +485,15 @@ function validateStateDiagramCounts(allTags: TagInfo[], diagramNodes: number, di
     if (expectedNodes !== diagramNodes) {
         issues.push(`Tags(${expectedNodes}) ≠ Diagram(${diagramNodes})`);
     }
-    //@validateStateDiagramCounts1->validateStateDiagramCounts2:Count connections and compare
-    //@validateStateDiagramCounts2:Connection count compared
-    const connectionCount = allTags.filter(t => t.isConnection).length;
+    //@validateStateDiagramCounts1->validateStateDiagramCounts2:Count unique connections (dedupe by source->target)
+    //@validateStateDiagramCounts2:Unique connection count compared
+    const uniqueConnectionKeys = new Set<string>();
+    for (const tag of allTags) {
+        if (tag.isConnection && tag.id.includes('->')) {
+            uniqueConnectionKeys.add(tag.id);
+        }
+    }
+    const connectionCount = uniqueConnectionKeys.size;
     if (connectionCount !== diagramConnections) {
         issues.push(`Connections(${connectionCount}) ≠ Diagram(${diagramConnections})`);
     }
