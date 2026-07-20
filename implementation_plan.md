@@ -1,67 +1,69 @@
-# Implementation Plan ✅ COMPLETE
+# Implementation Plan
 
-## [Overview]
-Document the MAD VS Code extension source code with MAD tags across all 35+ TypeScript source files, generating self-referencing Mermaid diagrams that describe the extension's own architecture, parsing pipeline, and UI flow.
+[Overview]
+Add a validation rule that ensures each numbered/sequential node in process-oriented diagrams (flowchart, sequence, state) has at least one connection to another node, preventing orphan nodes that would appear disconnected in the generated diagram.
 
-The MAD extension is a VS Code auto-documentation tool that parses `//@` tags in source files and generates Mermaid diagrams on save. Documenting the tool with its own tags serves as both documentation and a real-world validation of the MAD protocol.
+The task requires extending the existing validation pipeline to catch a specific class of issues: sequential (numbered) nodes that are declared but never referenced by any connection tag. In the current system, `findMissingConnections` only checks whether the diagram has zero connections total — it doesn't validate individual node connectivity. Flowchart, sequence, and state diagrams represent flows/processes where each numbered step should be connected; class and ER diagrams are exempt because standalone classes/entities are valid.
 
-**Compilation:** `npm run compile` passes with zero errors (verified 2026-07-05).  
-**Test suite:** 29/29 pass, 0 fail (verified 2026-07-05).  
-**Diagram validation:** Fixed (removed empty `Types` class from `types.ts`).
+[Types]
+One new function signature, no new types needed.
 
-## [Files] — 24 tagged, 7 skipped, 33 total planned
+New function: `findSequentialNodesWithoutConnections`
+```
+function findSequentialNodesWithoutConnections(allTags: TagInfo[], diagramType: string): string[]
+```
+- Input: array of parsed tag info, diagram type string
+- Output: array of human-readable issue strings (empty if all sequential nodes have connections)
+- Behavior: For flowchart/graph/sequence/state diagrams, checks each numbered node (id containing digits) to see if any connection tag references it as source or target. Returns issues describing which sequential nodes lack connections.
 
-| # | File | Status | Diagram Type |
-|---|------|--------|-------------|
-| 1 | `src/core/commands/shared/types.ts` | ✅ | `classDiagram` |
-| 2 | `src/core/diagram/parser.ts` | ✅ | `flowchart TD` |
-| 3 | `src/core/diagram/validator.ts` | ✅ | `flowchart TD` |
-| 4 | `src/core/diagram/identifier.ts` | ✅ | `graph LR` |
-| 5 | `src/core/commands/shared/helpers.ts` | ✅ | `sequenceDiagram` |
-| 6 | `src/core/commands/shared/validation.ts` | ✅ | `sequenceDiagram` |
-| 7 | `src/core/commands/shared/base-command.ts` | ✅ | `graph LR` |
-| 8 | `src/core/diagram/generators/types.ts` | ✅ | `graph LR` |
-| 9 | `src/core/diagram/generators/index.ts` | ✅ | `graph LR` |
-| 10-14 | 5 generator files | ⏭️ Skipped | Complex algorithms |
-| 15 | `src/core/diagram/generator.ts` | ⏭️ Skipped | Barrel export |
-| 16 | `src/core/commands/index.ts` | ✅ | `graph LR` |
-| 17 | `src/core/commands/flowchart-command.ts` | ✅ | `graph LR` |
-| 18 | `src/core/commands/sequence-command.ts` | ✅ | `sequenceDiagram` |
-| 19 | `src/core/commands/class-command.ts` | ✅ | `graph LR` |
-| 20 | `src/core/commands/state-command.ts` | ✅ | `graph LR` |
-| 21 | `src/core/commands/er-command.ts` | ✅ | `graph LR` |
-| 22 | `src/core/save-handler.ts` | ✅ | `sequenceDiagram` |
-| 23 | `src/core/diagram/mermaid-validator.ts` | ✅ | `graph LR` |
-| 24 | `src/core/ui/decoration-manager.ts` | ✅ | `graph LR` |
-| 25 | `src/core/ui/diagram-panel.ts` | ✅ | `graph LR` |
-| 26 | `src/core/ui/document-symbols.ts` | ✅ | `graph LR` |
-| 27 | `src/core/ui/folding-provider.ts` | ✅ | `graph LR` |
-| 28 | `src/core/ui/hover-provider.ts` | ✅ | `graph LR` |
-| 29 | `extension.ts` | ✅ | `graph LR` |
+[Files]
+Single file modification to `src/core/commands/shared/validation.ts`.
 
-## [Implementation Order — All Phases]
+- **Modified file**: `src/core/commands/shared/validation.ts`
+  - Add new function `findSequentialNodesWithoutConnections`
+  - Call it from `validateDiagramCounts` alongside the existing hygiene checks
 
-### Phase 1: Foundation ✅
-1-4. types.ts, parser.ts, validator.ts, identifier.ts
+No new files, no deleted files, no configuration changes.
 
-### Phase 2: Helpers & Generators ✅ (5/11, 6 skipped)
-5-9. helpers.ts, validation.ts, base-command.ts, generator types, generator index
-10-15. Generator algorithms, barrel export — ⏭️ skipped
+[Functions]
+Single new function added, one call site modified.
 
-### Phase 3: Commands ✅
-16-21. Command index + 5 command handlers
+**New function**: `findSequentialNodesWithoutConnections`
+- File: `src/core/commands/shared/validation.ts`
+- Signature: `(allTags: TagInfo[], diagramType: string): string[]`
+- Purpose: Checks that every numbered node (id containing digits) in process-oriented diagrams is referenced by at least one connection tag (either as source or target). Returns descriptive error messages for any disconnected sequential nodes.
+- Logic:
+  1. Determine if the diagram type requires sequential node connectivity (flowchart/graph, sequenceDiagram, stateDiagram-v2 → yes; classDiagram, erDiagram → no)
+  2. If not required, return empty array
+  3. Collect all sequential nodes: tags where `!t.isConnection && /\d/.test(t.id)` (i.e., entry nodes like `Login1`, sequence nodes like `Entry1.1`)
+  4. Collect all connection targets: iterate connection tags, collecting all `targetIds` and any source IDs extracted from `id.includes('->')`
+  5. Also add parent IDs from sequence node hierarchy (e.g., `Entry1.1` implies `Entry1` is a parent that generates an automatic edge)
+  6. For each sequential node not in the connected set, push an issue string to the result
+  7. Return issues
 
-### Phase 4: Save Pipeline ✅
-22-23. save-handler.ts, mermaid-validator.ts
+**Modified function**: `validateDiagramCounts`
+- File: `src/core/commands/shared/validation.ts`
+- Location: After the existing hygiene checks (around line 568)
+- Change: Add `issues.push(...findSequentialNodesWithoutConnections(allTags, diagramType));`
 
-### Phase 5: UI Layer ✅
-24-28. Decoration, panel, symbols, folding, hover
+No functions removed.
 
-### Phase 6: Entry Point ✅
-29. extension.ts
+[Classes]
+No class modifications required.
 
-### Phase 7: Compile & Validate ✅
-- ✅ Step 30: `npm run compile` — 0 errors
-- ✅ Step 31: Verified `/tmp/mad-diagram.mermaid` — fixed empty `Types` class
-- ✅ Step 32: Fix applied (removed `//@Types` group)
-- ✅ Step 33: `npm test` — 29/29 pass, 0 fail
+[Dependencies]
+No dependency changes required.
+
+[Testing]
+Existing tests must continue passing; the new validation will produce warnings (comments prepended to the mermaid output) only when disconnected sequential nodes exist, which should not occur in existing examples.
+
+Test strategy:
+- Run `npm run compile && node --test test/mad-outputs.test.mjs` to verify existing tests pass
+- Manually verify that creating a disconnected node (e.g., `//@Orphan1` with no connection) triggers the new validation
+
+[Implementation Order]
+Single atomic change to one file.
+
+1. Add the `findSequentialNodesWithoutConnections` function to `src/core/commands/shared/validation.ts`
+2. Add the call to this function in `validateDiagramCounts`
+3. Compile and run existing tests to confirm no regressions

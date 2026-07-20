@@ -291,6 +291,71 @@ export function findMissingConnections(allTags: TagInfo[], diagramType: string):
 }
 
 /**
+ * Checks that sequential/numbered nodes in process-oriented diagrams have at least one connection.
+ * Flowcharts/graphs, sequence diagrams, and state diagrams represent flows where each numbered
+ * step should be connected to something. Class and ER diagrams are exempt because standalone
+ * classes/entities are valid.
+ */
+//@findSequentialNodesWithoutConnections
+export function findSequentialNodesWithoutConnections(allTags: TagInfo[], diagramType: string): string[] {
+    const issues: string[] = [];
+    const typeKey = diagramType.toLowerCase().replace(/\s+/g, '');
+
+    //@findSequentialNodesWithoutConnections1:Check if diagram type requires sequential node connectivity
+    const shouldCheck =
+        typeKey.startsWith('flowchart') ||
+        typeKey.startsWith('graph') ||
+        typeKey.startsWith('sequencediagram') ||
+        typeKey.startsWith('statediagram') ||
+        typeKey.includes('state');
+
+    if (!shouldCheck) return issues;
+
+    //@findSequentialNodesWithoutConnections1->findSequentialNodesWithoutConnections2:Collect all sequential (numbered) nodes
+    //@findSequentialNodesWithoutConnections2:Sequential nodes collected
+    const sequentialNodes = allTags.filter(t => !t.isConnection && /\d/.test(t.id));
+    if (sequentialNodes.length === 0) return issues;
+
+    //@findSequentialNodesWithoutConnections2->findSequentialNodesWithoutConnections3:Build set of connected node IDs
+    //@findSequentialNodesWithoutConnections3:Connected set built
+    const connectedIds = new Set<string>();
+
+    for (const tag of allTags) {
+        if (!tag.isConnection) continue;
+
+        // Add all target IDs from connection tags
+        for (const targetId of tag.targetIds) {
+            connectedIds.add(targetId);
+        }
+
+        // Extract source from <source>-><target> connection IDs
+        if (tag.id.includes('->')) {
+            const [source] = tag.id.split('->');
+            if (source) connectedIds.add(source.trim());
+        }
+    }
+
+    //@findSequentialNodesWithoutConnections3->findSequentialNodesWithoutConnections4:Add sequence hierarchy parents (e.g., Entry1.1 implies Entry1 has an edge)
+    //@findSequentialNodesWithoutConnections4:Sequence parents added
+    for (const node of sequentialNodes) {
+        if (!node.id.includes('.')) continue;
+        const lastDot = node.id.lastIndexOf('.');
+        const parentId = node.id.substring(0, lastDot);
+        connectedIds.add(parentId);
+    }
+
+    //@findSequentialNodesWithoutConnections4->findSequentialNodesWithoutConnections5:Report nodes without connections
+    //@findSequentialNodesWithoutConnections5:Issues returned
+    for (const node of sequentialNodes) {
+        if (!connectedIds.has(node.id)) {
+            issues.push(`Node "${node.id}" (line ${node.line + 1}) has no connections — add a connection tag (e.g., //@->${node.id}) or reference it from another node`);
+        }
+    }
+
+    return issues;
+}
+
+/**
  * Checks connections pointing to non-existent IDs.
  * Two-pass: first collect all valid IDs, then validate each connection target.
  */
@@ -566,6 +631,7 @@ export function validateDiagramCounts(
     issues.push(...findInvalidReferences(allTags));
     issues.push(...findTagPlacementIssues(allTags, lines, diagramType));
     issues.push(...findMissingConnections(allTags, diagramType));
+    issues.push(...findSequentialNodesWithoutConnections(allTags, diagramType));
     
     //@validateDiagramCounts3->validateDiagramCounts4:Return all issues
     //@validateDiagramCounts4:Issues returned
